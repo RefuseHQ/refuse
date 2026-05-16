@@ -6,16 +6,23 @@
 
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { serveStatic } from "@hono/node-server/serve-static";
 import type Database from "better-sqlite3";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
 import type { Config } from "../config";
 import type { CardReader } from "../cards";
+import type { Scheduler } from "../ingest/scheduler";
 import { makeKeyAuth, makeAdminAuth } from "./auth";
 import { buildRestRouter } from "./rest";
+import { buildAdminRouter, buildKeysRouter } from "./admin";
 
 export interface AppDeps {
   db: Database.Database;
   config: Config;
   cards: CardReader;
+  scheduler: Scheduler;
 }
 
 export function buildApp(deps: AppDeps): Hono {
@@ -54,25 +61,31 @@ export function buildApp(deps: AppDeps): Hono {
     ),
   );
 
-  // Admin-gated routes (key CRUD, manual ingest triggers).
+  // Admin-gated routes (key CRUD, manual ingest triggers, stats).
   const adminAuth = makeAdminAuth(deps.config);
   app.use("/api/admin/*", adminAuth);
   app.use("/api/keys/*", adminAuth);
 
-  app.get("/api/admin/stats", (c) => {
-    const row = deps.db.prepare(`SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table'`).get() as { n: number } | undefined;
-    return c.json({
-      tables: row?.n ?? 0,
-      detail: "Full stats endpoint will be wired up in a follow-up.",
-    });
-  });
-
-  // Embedded UI: serves vanilla HTML/JS from src/ui/static/. Will be added
-  // in the UI task; for now the route is a placeholder.
-  app.get("/ui/*", (c) =>
-    c.text("UI assets will be served here once added (see roadmap).", 501),
+  app.route(
+    "/api/admin",
+    buildAdminRouter({
+      rawDb: deps.db,
+      config: deps.config,
+      scheduler: deps.scheduler,
+    }),
   );
-  app.get("/ui", (c) => c.redirect("/ui/"));
+  app.route("/api/keys", buildKeysRouter(deps.db));
+
+  // Embedded UI — vanilla HTML/JS served from src/ui/static/. Always open;
+  // the UI itself prompts for the admin token where needed.
+  const uiRoot = resolveUiRoot();
+  if (uiRoot) {
+    app.use(
+      "/ui/*",
+      serveStatic({ root: uiRoot, rewriteRequestPath: (p) => p.replace(/^\/ui/, "") }),
+    );
+    app.get("/ui", (c) => c.redirect("/ui/"));
+  }
 
   // Root: friendly message pointing at the surfaces.
   app.get("/", (c) =>
@@ -88,4 +101,22 @@ export function buildApp(deps: AppDeps): Hono {
   });
 
   return app;
+}
+
+/**
+ * Resolve the on-disk path of the UI static assets. In dev (tsx) we live in
+ * src/http/router.ts so the assets are at ../ui/static. In production
+ * (compiled, run as node dist/index.js) the entrypoint script and the
+ * Dockerfile copy the static dir to a sibling location — we probe a couple
+ * of candidates.
+ */
+function resolveUiRoot(): string | null {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    join(here, "..", "ui", "static"),
+    join(here, "..", "..", "ui", "static"),
+    join(here, "..", "..", "..", "ui", "static"),
+  ];
+  for (const c of candidates) if (existsSync(c)) return c;
+  return null;
 }

@@ -21,8 +21,10 @@ async function main(): Promise<void> {
   const db = openDb(config.REFUSE_DB_PATH);
   runMigrations(db);
   const cards = makeCardReader(db, { maxEntries: 100, ttlSeconds: 60 });
+  // Smoke test scheduler stub — no real cron.
+  const scheduler = { start: () => {}, stop: () => {}, trigger: async () => {} };
 
-  const app = buildApp({ db, config, cards });
+  const app = buildApp({ db, config, cards, scheduler });
 
   const hits: Array<[string, RequestInit, number]> = [
     ["http://localhost/healthz", {}, 200],
@@ -51,7 +53,7 @@ async function main(): Promise<void> {
     REFUSE_REQUIRE_KEY: "true",
     REFUSE_ADMIN_TOKEN: "test-admin",
   });
-  const locked = buildApp({ db, config: lockedConfig, cards });
+  const locked = buildApp({ db, config: lockedConfig, cards, scheduler });
   const res = await locked.fetch(
     new Request("http://localhost/api/v1/check/package", { method: "POST" }),
   );

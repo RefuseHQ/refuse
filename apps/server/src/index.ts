@@ -39,7 +39,7 @@ function main(): void {
   });
   scheduler.start();
 
-  const app = buildApp({ db, config, cards });
+  const app = buildApp({ db, config, cards, scheduler });
 
   const server = serve({
     fetch: app.fetch,
