@@ -1,9 +1,14 @@
-// @yarnpkg/lockfile is CJS-only — use the namespace default to interop cleanly
-// with Node ESM.
-import yarnLockfile from "@yarnpkg/lockfile";
+// @yarnpkg/lockfile is CJS-only. `import yarnLockfile from "@yarnpkg/lockfile"`
+// works in some setups via Node's CJS-interop but not all — on Linux Node 20
+// with tsup-bundled output the named export `parse` ends up undefined. Pull
+// it via `createRequire` so we always get the CJS module.exports object.
+import { createRequire } from "node:module";
 import type { ParsedDependency, LockfileParser } from "./types";
 
-const yarnParse = yarnLockfile.parse;
+const require = createRequire(import.meta.url);
+const yarnParse = (require("@yarnpkg/lockfile") as {
+  parse(content: string): { type: string; object?: Record<string, { version?: string }> };
+}).parse;
 
 /**
  * Parse Yarn v1 `yarn.lock` files. Each top-level entry maps a list of
