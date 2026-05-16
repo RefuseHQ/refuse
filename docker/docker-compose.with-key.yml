@@ -1,0 +1,31 @@
+# Compose example with bearer-key auth enabled.
+#
+# Set REFUSE_ADMIN_TOKEN to a long random string before bringing this up:
+#   export REFUSE_ADMIN_TOKEN=$(openssl rand -hex 32)
+#   docker compose -f docker/docker-compose.with-key.yml up
+#
+# Create per-user API keys (rfs_...) via the admin UI at /ui/keys after first
+# boot; agents then send them as `Authorization: Bearer rfs_...`.
+
+services:
+  refuse:
+    image: ghcr.io/refusehq/refuse:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+    environment:
+      REFUSE_REQUIRE_KEY: "true"
+      REFUSE_ADMIN_TOKEN: "${REFUSE_ADMIN_TOKEN:?set REFUSE_ADMIN_TOKEN before starting}"
+      # Optional — raises GHSA ingest rate limit. Token only needs 'public_repo'.
+      # REFUSE_GITHUB_TOKEN: "ghp_..."
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3

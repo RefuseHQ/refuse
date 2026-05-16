@@ -113,6 +113,9 @@ export function buildApp(deps: AppDeps): Hono {
 function resolveUiRoot(): string | null {
   const here = dirname(fileURLToPath(import.meta.url));
   const candidates = [
+    // bundled (dist/index.js → dist/ui/static, what the Dockerfile copies)
+    join(here, "ui", "static"),
+    // dev (src/http/router.ts → src/ui/static)
     join(here, "..", "ui", "static"),
     join(here, "..", "..", "ui", "static"),
     join(here, "..", "..", "..", "ui", "static"),

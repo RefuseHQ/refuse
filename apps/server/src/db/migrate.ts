@@ -8,15 +8,32 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type Database from "better-sqlite3";
 
-// Resolve the migrations directory relative to this file. In dev this is
-// src/migrations/; in the built image it's dist/migrations/ — entrypoint.sh
-// arranges the copy.
-const MIGRATIONS_DIR = (() => {
+// Resolve the migrations directory at runtime. tsup bundles everything to
+// dist/index.js so import.meta.url points at dist/. The actual location
+// depends on whether we're running:
+//   - dev (tsx): src/db/migrate.ts → ../migrations
+//   - prod bundle: dist/index.js → ./migrations (Dockerfile copies)
+// Try a couple of candidates so both work.
+function resolveMigrationsDir(): string {
   const here = dirname(fileURLToPath(import.meta.url));
-  // dist/db/migrate.js → ../../migrations/ (the Dockerfile copies migrations/
-  // alongside dist/), or src/db/migrate.ts → ../migrations/ for tests/dev.
-  return join(here, "..", "migrations");
-})();
+  const candidates = [
+    join(here, "migrations"),
+    join(here, "..", "migrations"),
+    join(here, "..", "..", "migrations"),
+    join(here, "..", "src", "migrations"),
+  ];
+  for (const c of candidates) {
+    try {
+      readdirSync(c);
+      return c;
+    } catch {
+      // try next
+    }
+  }
+  return join(here, "migrations"); // fallback (will fail at readdir time, logged)
+}
+
+const MIGRATIONS_DIR = resolveMigrationsDir();
 
 interface AppliedRow {
   name: string;

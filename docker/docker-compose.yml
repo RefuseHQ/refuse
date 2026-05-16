@@ -1,0 +1,18 @@
+# Minimal compose — anonymous open server, SQLite mounted to ./data.
+services:
+  refuse:
+    image: ghcr.io/refusehq/refuse:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
