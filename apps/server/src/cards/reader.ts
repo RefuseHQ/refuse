@@ -1,20 +1,20 @@
 /**
  * Cards reader. The vendored tool handlers all ask "give me the VulnCard for
- * this (ecosystem, package)" and don't care how it's stored. In hosted, cards
- * are pre-built and stashed in a KV store; in OSS we build them on the fly
- * from SQLite (see implementation below).
+ * this (ecosystem, package)" and don't care how it's stored. Cards are built
+ * on the fly from SQLite — same shape, just no pre-published store. An LRU
+ * cache in front absorbs hot-path reads; ingest invalidates affected
+ * (ecosystem, name) keys when it writes new rows.
  *
- * The reader is wrapped by an LRU cache so hot packages skip the SQL round
- * trip on subsequent reads. On every ingest tick we evict the touched
- * (ecosystem, name) keys so updates show up immediately.
- *
- * v0: stub returns null for everything. Real implementation lands in the
- * "implement cards reader" task.
+ * The underlying SQL is shared with the ingest layer's publishCards code path
+ * via `buildCardForPackage`, so a card built here is identical to one that
+ * would have been pre-published — there is no "stale view" risk.
  */
 
 import type Database from "better-sqlite3";
 import { LRUCache } from "lru-cache";
 import type { VulnCard } from "@refuse/shared";
+import { adapt, type D1LikeDatabase } from "../db/adapter";
+import { buildCardForPackage } from "../ingest/publish-cards";
 
 export interface CardReader {
   readCard(ecosystem: string, name: string): Promise<VulnCard | null>;
@@ -26,21 +26,20 @@ export interface CardReaderConfig {
   ttlSeconds: number;
 }
 
-/**
- * Sentinel for "we looked, there's no card". Lets us cache the negative result
- * without needing a nullable value type (lru-cache v11 rejects nulls).
- */
+/** Cache "we looked, there's no card" without a nullable value type. */
 const ABSENT = Symbol("absent");
 type CachedValue = VulnCard | typeof ABSENT;
 
 export function makeCardReader(
-  _db: Database.Database,
+  rawDb: Database.Database,
   config: CardReaderConfig,
 ): CardReader {
   const cache = new LRUCache<string, CachedValue>({
     max: config.maxEntries,
     ttl: config.ttlSeconds * 1000,
   });
+  // Single facade instance reused across calls — adapter has no internal state.
+  const db: D1LikeDatabase = adapt(rawDb);
 
   const key = (ecosystem: string, name: string): string => `${ecosystem}:${name}`;
 
@@ -51,11 +50,22 @@ export function makeCardReader(
       if (cached !== undefined) {
         return cached === ABSENT ? null : cached;
       }
-      // TODO (task: implement cards reader): build the card from
-      //   vulnerabilities + affected_packages + package_versions + kev + epss
-      //   joins and populate the cache. For now: always miss → null.
-      cache.set(k, ABSENT);
-      return null;
+      let card: VulnCard | null;
+      try {
+        ({ card } = await buildCardForPackage(db, ecosystem, name));
+      } catch (e) {
+        // Card build failure is non-fatal — log and treat as "absent" for
+        // this request. The tool layer's check_package returns
+        // vulnerable=false / freshness=stale on a null card, which is the
+        // correct fail-open behaviour.
+        console.warn(
+          `refuse: card build failed for ${ecosystem}:${name}: ${(e as Error).message}`,
+        );
+        cache.set(k, ABSENT);
+        return null;
+      }
+      cache.set(k, card ?? ABSENT);
+      return card;
     },
     invalidate(ecosystem, name) {
       cache.delete(key(ecosystem, name));

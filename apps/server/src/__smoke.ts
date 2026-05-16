@@ -69,6 +69,56 @@ async function main(): Promise<void> {
   if (r2.status !== 200) failed++;
   console.log(`[${ok2}] GET /api/admin/stats (admin token)  → ${r2.status} (expected 200)`);
 
+  // Seed a fake advisory + affected package so the cards reader has
+  // something real to build. Then verify check_package picks it up.
+  db.prepare(
+    `INSERT OR REPLACE INTO vulnerabilities
+       (refuse_id, primary_id, aliases, summary, details, severity_score, severity_label, severity_vector, references_json, published_at, modified_at, withdrawn_at, raw_osv, is_malicious)
+     VALUES (?, ?, ?, ?, NULL, ?, ?, NULL, ?, ?, ?, NULL, ?, 0)`,
+  ).run(
+    "rfs-smoke-0001",
+    "CVE-2099-99999",
+    JSON.stringify(["CVE-2099-99999"]),
+    "Smoke-test advisory",
+    9.8,
+    "critical",
+    JSON.stringify(["https://example.test/advisory"]),
+    "2099-01-01T00:00:00Z",
+    "2099-01-01T00:00:00Z",
+    "{}",
+  );
+  db.prepare(
+    `INSERT OR REPLACE INTO affected_packages
+       (refuse_id, ecosystem, package_name, ranges_json, fix_versions)
+     VALUES (?, 'npm', 'smoke-pkg', ?, ?)`,
+  ).run(
+    "rfs-smoke-0001",
+    JSON.stringify([{ introduced: "0.0.0", fixed: "1.0.0" }]),
+    JSON.stringify(["1.0.0"]),
+  );
+  db.prepare(
+    `INSERT OR REPLACE INTO package_versions
+       (ecosystem, package_name, version, is_prerelease, is_yanked, released_at, license_spdx, license_category)
+     VALUES ('npm', 'smoke-pkg', '0.5.0', 0, 0, '2099-01-01', 'MIT', 'permissive')`,
+  ).run();
+
+  // Invalidate so the (potentially cached null) gets refreshed.
+  cards.invalidate("npm", "smoke-pkg");
+
+  const r3 = await app.fetch(
+    new Request("http://localhost/api/v1/check/package", {
+      method: "POST",
+      body: JSON.stringify({ ecosystem: "npm", name: "smoke-pkg", version: "0.5.0" }),
+      headers: { "Content-Type": "application/json" },
+    }),
+  );
+  const body3 = (await r3.json()) as { vulnerable?: boolean; vulnerabilities?: unknown[] };
+  const okVuln = body3.vulnerable === true && (body3.vulnerabilities?.length ?? 0) > 0;
+  if (!okVuln) failed++;
+  console.log(
+    `[${okVuln ? "ok " : "FAIL"}] cards reader: smoke-pkg@0.5.0 → vulnerable=${body3.vulnerable} (expected true)`,
+  );
+
   db.close();
   if (failed > 0) {
     console.error(`\nSMOKE FAILED: ${failed} expectation(s)`);
