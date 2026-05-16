@@ -1,0 +1,14 @@
+node_modules
+dist
+.DS_Store
+*.log
+.env
+.env.local
+data/
+*.db
+*.db-wal
+*.db-shm
+*.tsbuildinfo
+.idea
+.vscode
+coverage
