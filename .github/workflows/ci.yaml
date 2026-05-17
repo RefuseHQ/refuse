@@ -6,15 +6,23 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   build:
+    name: build & test (node ${{ matrix.node }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ matrix.node }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm run typecheck
@@ -22,21 +30,23 @@ jobs:
       - run: pnpm run build
 
   audit:
+    name: OSS-independence audit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run OSS-independence audit
-        run: ./scripts/audit.sh
+      - run: ./scripts/audit.sh
 
   docker:
+    name: docker build (no push)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - name: Build image (no push)
-        uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Dockerfile
           push: false
           platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

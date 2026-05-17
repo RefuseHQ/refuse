@@ -1,0 +1,30 @@
+# CODEOWNERS for refuse
+#
+# These owners are requested for review on every matching PR. Order matters —
+# the last matching pattern takes precedence.
+#
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-security/customizing-your-repository/about-code-owners
+
+# Default — everything in the repo
+*                              @RefuseHQ/maintainers
+
+# Server runtime
+/apps/server/                  @RefuseHQ/maintainers
+
+# Ingest adapters (touchy — upstream feed shape changes break things)
+/apps/server/src/ingest/       @RefuseHQ/maintainers
+
+# Parsers (lockfile / Dockerfile / workflow)
+/apps/server/src/parsers/      @RefuseHQ/maintainers
+
+# Version comparators
+/packages/versions/            @RefuseHQ/maintainers
+
+# Docker + release artifacts
+/docker/                       @RefuseHQ/maintainers
+/.github/workflows/release.yaml @RefuseHQ/maintainers
+
+# CI + governance
+/.github/                      @RefuseHQ/maintainers
+/SECURITY.md                   @RefuseHQ/maintainers
+/CODE_OF_CONDUCT.md            @RefuseHQ/maintainers

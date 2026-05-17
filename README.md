@@ -1,12 +1,18 @@
+<div align="center">
+
 # refuse
 
-> Self-hostable backend that powers [`refuse-cli`](https://github.com/RefuseHQ/refuse-cli) to block vulnerable package installs — on laptops, in CI runners, and during Docker image builds.
+**Self-hostable backend that blocks vulnerable package installs — on laptops, in CI, and during Docker builds.**
 
 [![CI](https://github.com/RefuseHQ/refuse/actions/workflows/ci.yaml/badge.svg)](https://github.com/RefuseHQ/refuse/actions/workflows/ci.yaml)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![CodeQL](https://github.com/RefuseHQ/refuse/actions/workflows/codeql.yml/badge.svg)](https://github.com/RefuseHQ/refuse/actions/workflows/codeql.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Container](https://img.shields.io/badge/ghcr.io%2Frefusehq%2Frefuse-latest-1f6feb?logo=docker)](https://github.com/RefuseHQ/refuse/pkgs/container/refuse)
+[![Release](https://img.shields.io/github/v/release/RefuseHQ/refuse?display_name=tag&sort=semver)](https://github.com/RefuseHQ/refuse/releases)
 
-A small HTTP service that ingests public vulnerability + metadata feeds — OSV, deps.dev, CISA KEV, FIRST EPSS, GitHub Security Advisories, Wolfi — into a local SQLite database and answers questions like:
+</div>
+
+A small HTTP service that ingests public vulnerability + metadata feeds — [OSV](https://osv.dev/), [deps.dev](https://deps.dev/), [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog), [FIRST EPSS](https://www.first.org/epss/), [GitHub Security Advisories](https://github.com/advisories), [Wolfi](https://github.com/wolfi-dev/advisories) — into a local SQLite database and answers questions like:
 
 - *Is `lodash@4.17.10` vulnerable?*
 - *What's the minimum-safe upgrade for `requests`?*
@@ -90,41 +96,35 @@ For the "scan the Dockerfile itself before the build" pattern, run `refuse check
 - **Built-in admin UI** at `/ui/` — vanilla HTML/JS, no build step, ~30 KB. Source health, ingest triggers, key management.
 - **Reads only from public sources.** No external service dependency at runtime.
 
-> An `/mcp` endpoint for MCP-aware clients (Claude Code, Cursor, Codex, Antigravity) is on the roadmap. The REST surface is the canonical interface today.
+> An `/mcp` endpoint for MCP-aware clients (Claude Code, Cursor, Codex, Antigravity) is on the [roadmap](./ROADMAP.md). The REST surface is the canonical interface today.
 
 ---
 
 ## How it fits
 
-```
-   laptop                     CI runner                 docker buildx
-     │                            │                          │
-  refuse-cli                  refuse-cli                refuse-cli
-  (PATH shim)              (service container)          (build stage)
-     │                            │                          │
-     └────────────── HTTP ────────┼──────────────────────────┘
-                                  ▼
-                       ┌───────────────────────┐
-                       │   refuse server       │
-                       │   (this repo)         │
-                       │                       │
-                       │   /api/v1/check/*     │
-                       │           │           │
-                       │           ▼           │
-                       │   tool handlers ──► SQLite
-                       │                       │
-                       │   node-cron (in-process)
-                       │     ▲                 │
-                       └─────┼─────────────────┘
-                             │
-       ┌─────────────────────┼─────────────────────┐
-       │                     │                     │
-       ▼                     ▼                     ▼
-     OSV                  deps.dev          KEV / EPSS /
-   (all ecosystems)     (license + vers.)  GHSA / Wolfi
+```mermaid
+flowchart LR
+    LAPTOP[laptop<br/>refuse-cli shim] --> SRV
+    CI[CI runner<br/>service container] --> SRV
+    DOCKER[docker build stage] --> SRV
+    AGENT[Coding agent] --> SRV
+
+    subgraph refuse-server
+      SRV[Hono HTTP<br/>/api/v1/check/*]
+      DB[(SQLite<br/>WAL)]
+      CRON[node-cron<br/>scheduler]
+      SRV <--> DB
+      CRON --> DB
+    end
+
+    OSV[OSV.dev] --> CRON
+    DD[deps.dev] --> CRON
+    KEV[KEV / EPSS / GHSA / Wolfi] --> CRON
 ```
 
 `refuse-cli` is the recommended caller because it handles PATH shimming, install-verb parsing, and the gate flow. Any HTTP client works too — see [`docs/api.md`](docs/api.md).
+
+For a full walkthrough of the internals, see [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 ---
 
@@ -177,7 +177,7 @@ services:
       retries: 3
 ```
 
-See [`docker/docker-compose.with-key.yml`](docker/docker-compose.with-key.yml) for the same with comments.
+See [`docker/docker-compose.with-key.yml`](docker/docker-compose.with-key.yml) for the same with comments. Released images are [cosign-signed](https://github.com/sigstore/cosign) and ship with SLSA build provenance — see [SECURITY.md](./SECURITY.md) for verification.
 
 ---
 
@@ -224,6 +224,17 @@ Full reference: [`docs/configuration.md`](docs/configuration.md).
 | `GET  /ui/` | Admin dashboard for self-hosted operators |
 
 Full schema reference: [`docs/api.md`](docs/api.md).
+
+---
+
+## The refuse family
+
+| | What it is | When to use it |
+| --- | --- | --- |
+| **[refuse](https://github.com/RefuseHQ/refuse)** (this) | Self-hostable HTTP server | You want your own backend — air-gapped, on-prem, or just because |
+| **[refuse-cli](https://github.com/RefuseHQ/refuse-cli)** | PATH shim that wraps `npm` / `pip` / `cargo` / … | You want to block installs before they happen, on a dev machine or CI |
+
+Both share parsers, version comparators, and the OSV-derived data model.
 
 ---
 
@@ -320,7 +331,7 @@ make docker
 make docker-run                            # → http://localhost:8080
 ```
 
-Layout:
+Repo layout:
 
 ```
 apps/server/             # Hono server, REST API, tools, ingest, UI
@@ -338,17 +349,19 @@ packages/
 docker/                  # Dockerfile + compose examples + entrypoint
 ```
 
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for the deeper walkthrough.
+
 ---
 
-## Project status
+## Status
 
-Alpha. The REST + ingestion + CLI integration is feature-complete and verified end-to-end. The `/mcp` MCP-transport endpoint is currently a stub returning 501 — it will be wired up post-v0.1.0 for users who want a self-hosted MCP target. Track progress in the [issues](https://github.com/RefuseHQ/refuse/issues).
+Alpha. The REST + ingestion + CLI integration is feature-complete and verified end-to-end. The `/mcp` MCP-transport endpoint is currently a stub returning 501 — it will be wired up post-v0.1.0 for users who want a self-hosted MCP target. See [ROADMAP.md](./ROADMAP.md) and the [open issues](https://github.com/RefuseHQ/refuse/issues).
 
 ---
 
 ## Contributing
 
-Issues, fixes, and new ecosystem matchers are welcome. Before opening a PR:
+Issues, fixes, and new ecosystem matchers are welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md). Before opening a PR:
 
 ```sh
 pnpm typecheck && pnpm test
@@ -356,14 +369,14 @@ pnpm typecheck && pnpm test
 make docker               # confirms the image still builds
 ```
 
----
+## Security
+
+Security policy: [SECURITY.md](./SECURITY.md). Report privately via [hello@refuse.dev](mailto:hello@refuse.dev) or [GitHub private vulnerability reporting](https://github.com/RefuseHQ/refuse/security/advisories/new).
 
 ## Acknowledgments
 
 Built on top of [OSV.dev](https://osv.dev/), [deps.dev](https://deps.dev/), the [CISA KEV catalog](https://www.cisa.gov/known-exploited-vulnerabilities-catalog), [FIRST EPSS](https://www.first.org/epss/), [GitHub Security Advisories](https://github.com/advisories), and the [Wolfi advisories](https://github.com/wolfi-dev/advisories). All free, all maintained by people doing the real work — refuse is mostly plumbing on top of theirs.
 
----
-
 ## License
 
-[Apache-2.0](LICENSE).
+[Apache License 2.0](./LICENSE) © RefuseHQ.
