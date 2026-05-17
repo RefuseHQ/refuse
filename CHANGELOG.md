@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 - Community + governance docs: `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `CODEOWNERS`, issue + PR templates, `.editorconfig`, `ARCHITECTURE.md`, `ROADMAP.md`.
-- Dependabot, CodeQL, lint workflows.
+- Dependabot and CodeQL workflows.
 
 ### Changed
 - README polish: hero, badges, architecture diagram, cross-link to `refuse-cli`.
