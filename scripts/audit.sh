@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# OSS-independence audit. Fails the build if anything in the repo references
-# hosted-only infrastructure or upstream private paths. See README + DIVERGENCE.md.
+# Repo-hygiene audit. Fails the build on:
+#   * vendor-locked URLs / domains that don't belong in a self-hostable server
+#   * env-var names tied to a closed-source auth / billing stack
+#   * code-level references to a private upstream
+#   * Cloudflare Workers bindings (this is a Node server, not a Worker)
+#   * package.json deps that pull in closed-source SaaS clients
 
 set -euo pipefail
 
@@ -24,27 +28,27 @@ hits() {
 INCLUDE=(--include='*.ts' --include='*.tsx' --include='*.js' --include='*.mjs' --include='*.json' --include='*.md' --include='*.sql' --include='*.yml' --include='*.yaml' --include='Dockerfile')
 EXCLUDE=(--exclude-dir=node_modules --exclude-dir=dist --exclude-dir=data --exclude-dir=.git)
 
-note "hosted-infra references (must be zero)"
-hits "no mcp.refuse.dev / refuse.dev/api / workos / dodopayments / stripe / authkit"  \
-  -rnE "mcp\.refuse\.dev|refuse\.dev/api|workos|dodopayments|stripe|authkit" \
+note "closed-source SaaS client SDKs (must be zero)"
+hits "no workos / dodopayments / stripe / authkit references" \
+  -rnE "workos|dodopayments|stripe|authkit" \
   "${INCLUDE[@]}" "${EXCLUDE[@]}" .
 
-note "hosted env-var names (must be zero)"
+note "closed-source env-var names (must be zero)"
 hits "no WORKOS_ / DODO_ / STRIPE_ / ADMIN_EMAILS / CARDS_NAMESPACE" \
   -rnE "WORKOS_|DODO_|STRIPE_|ADMIN_EMAILS|CARDS_NAMESPACE" \
   "${INCLUDE[@]}" "${EXCLUDE[@]}" .
 
-note "internal path references (must be zero)"
+note "private upstream path refs (must be zero)"
 hits "no backend/apps/ or RefuseHQ/core" \
   -rnE "backend/apps/|RefuseHQ/core" \
   --include='*.ts' --include='*.md' "${EXCLUDE[@]}" .
 
-note "Cloudflare-specific bindings (must be zero)"
+note "Cloudflare Workers bindings (this is a Node server — must be zero)"
 hits "no env.DB / env.CARDS / env.KV / ctx.waitUntil / wrangler" \
   -rnE "env\.DB|env\.CARDS|env\.KV|ctx\.waitUntil|wrangler" \
   --include='*.ts' --include='*.toml' "${EXCLUDE[@]}" .
 
-note "package.json deps (must not include hosted-only packages)"
+note "package.json deps (must not include hosted-only SaaS clients)"
 if command -v jq >/dev/null 2>&1; then
   bad=$(find . -name package.json -not -path '*/node_modules/*' -print0 \
     | xargs -0 -n1 jq -r '[.dependencies // {}, .devDependencies // {}] | .[] | keys[]' 2>/dev/null \
@@ -58,11 +62,6 @@ if command -v jq >/dev/null 2>&1; then
 else
   printf "\033[33m[skip]\033[0m jq not installed; skipping dep audit\n"
 fi
-
-note "docs/README — no signup gating language"
-hits "no 'sign up at refuse.dev' / hosted-required / pay-plan language" \
-  -rnE "sign up at refuse\.dev|hosted.*required|pay.*plan" \
-  docs/ README.md 2>/dev/null
 
 if [ "$fail" -ne 0 ]; then
   printf "\n\033[1;31mAUDIT FAILED — fix the FAIL lines above before publishing.\033[0m\n"

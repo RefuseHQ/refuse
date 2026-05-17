@@ -67,7 +67,7 @@ export async function pullGhsaPage(
   if (modifiedAfter) params.set("modified", `>${modifiedAfter}`);
 
   const headers: Record<string, string> = {
-    "User-Agent": "refuse.dev-ingestion/1.0",
+    "User-Agent": "refuse-ingestion/1.0 (+https://github.com/RefuseHQ/refuse)",
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28"};
   if (apiToken) headers.Authorization = `Bearer ${apiToken}`;

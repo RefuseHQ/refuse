@@ -88,7 +88,7 @@ For the "scan the Dockerfile itself before the build" pattern, run `refuse check
 - **Embedded SQLite** (better-sqlite3, WAL mode). One file, mounted from the host.
 - **Optional API-key auth** — anonymous by default; flip a single env var to require bearer tokens.
 - **Built-in admin UI** at `/ui/` — vanilla HTML/JS, no build step, ~30 KB. Source health, ingest triggers, key management.
-- **Reads only from public sources.** No dependency on hosted refuse infrastructure.
+- **Reads only from public sources.** No external service dependency at runtime.
 
 > An `/mcp` endpoint for MCP-aware clients (Claude Code, Cursor, Codex, Antigravity) is on the roadmap. The REST surface is the canonical interface today.
 
@@ -352,11 +352,9 @@ Issues, fixes, and new ecosystem matchers are welcome. Before opening a PR:
 
 ```sh
 pnpm typecheck && pnpm test
-./scripts/audit.sh        # makes sure nothing references hosted-refuse infra
+./scripts/audit.sh        # guards against vendor-locked URLs and runtime env-var leakage
 make docker               # confirms the image still builds
 ```
-
-See [`DIVERGENCE.md`](DIVERGENCE.md) for how this repo stays in sync with the hosted edition.
 
 ---
 
