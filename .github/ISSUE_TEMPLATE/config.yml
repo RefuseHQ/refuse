@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or discussion
+    url: https://github.com/RefuseHQ/refuse/discussions
+    about: Ask questions, share use cases, or float ideas before opening an issue.
+  - name: Security vulnerability
+    url: https://github.com/RefuseHQ/refuse/security/advisories/new
+    about: Report a vulnerability privately. See SECURITY.md.
+  - name: The refuse CLI (the shim)
+    url: https://github.com/RefuseHQ/refuse-cli/issues
+    about: Bugs or feature requests for the npm/pip/cargo shim — file there instead.

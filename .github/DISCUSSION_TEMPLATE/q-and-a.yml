@@ -1,0 +1,18 @@
+title: ""
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Got a question about running refuse, integrating it, or extending it? Ask here. For confirmed bugs or feature proposals, please use [issues](https://github.com/RefuseHQ/refuse/issues/new/choose) instead.
+  - type: textarea
+    id: question
+    attributes:
+      label: What would you like to know?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: How are you running refuse, what did you try, what got you stuck?

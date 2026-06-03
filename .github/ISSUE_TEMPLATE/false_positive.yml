@@ -1,0 +1,63 @@
+name: False positive / false negative
+description: refuse blocked a package it shouldn't have, or let through a package it should have blocked.
+title: "[fp/fn]: <ecosystem>/<package>@<version>"
+labels: ["data-quality", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        These reports are the highest-value contributions we get. Thank you.
+  - type: dropdown
+    id: type
+    attributes:
+      label: Which is it?
+      options:
+        - False positive (blocked, but shouldn't have been)
+        - False negative (allowed, but should have been blocked)
+        - Wrong suggested safe version
+        - Wrong severity
+    validations:
+      required: true
+  - type: input
+    id: ecosystem
+    attributes:
+      label: Ecosystem
+      placeholder: "npm | PyPI | crates.io | rubygems | maven | ..."
+    validations:
+      required: true
+  - type: input
+    id: package
+    attributes:
+      label: Package name
+      placeholder: "lodash"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Affected version
+      placeholder: "4.17.10"
+    validations:
+      required: true
+  - type: textarea
+    id: response
+    attributes:
+      label: What refuse returned
+      description: Paste the JSON response from `/api/v1/check/package`.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected (and why)
+      description: Link to the relevant advisory, release notes, or upstream issue.
+    validations:
+      required: true
+  - type: input
+    id: version-of-refuse
+    attributes:
+      label: refuse version
+      placeholder: "ghcr.io/refusehq/refuse:v0.0.1"
+    validations:
+      required: true

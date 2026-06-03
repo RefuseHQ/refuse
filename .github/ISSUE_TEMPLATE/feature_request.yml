@@ -1,0 +1,49 @@
+name: Feature request
+description: Propose a new capability or behavior change.
+title: "[feat]: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing — please check [the roadmap](https://github.com/RefuseHQ/refuse/blob/main/ROADMAP.md) and existing issues. If you're proposing a large change, it's worth discussing in a [Discussion](https://github.com/RefuseHQ/refuse/discussions) first.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the use case. Avoid jumping straight to a proposed solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed solution
+      description: If you have one. Otherwise, leave blank — we'll figure it out.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Which part of refuse does this touch?
+      multiple: true
+      options:
+        - HTTP API
+        - Ingest pipeline
+        - Lockfile parsers
+        - Dockerfile parser
+        - GitHub Actions parser
+        - Admin UI
+        - Docker image
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Code of Conduct
+      options:
+        - label: I agree to follow this project's [Code of Conduct](https://github.com/RefuseHQ/refuse/blob/main/CODE_OF_CONDUCT.md).
+          required: true
