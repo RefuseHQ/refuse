@@ -1,5 +1,7 @@
 # MCP
 
+> **Status: roadmap.** The self-hosted server's `POST /mcp` endpoint currently returns 501. The canonical interface on self-host today is the REST surface at `/api/v1/check/*`. The hosted server at `https://mcp.refuse.dev/mcp` is fully wired — point Claude Code / Cursor / Codex MCP clients at it in the meantime. MCP-on-self-host is on the roadmap.
+
 `refuse` exposes a Streamable HTTP MCP transport at `POST /mcp`. Six tools:
 
 - `check_package` — vet a single (ecosystem, name, version)
