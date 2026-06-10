@@ -1,0 +1,34 @@
+name: Dependabot auto-merge
+
+# Schedules auto-merge on Dependabot PRs once required gates pass.
+# Auto-merge respects all branch ruleset checks (CI green, code scanning
+# clean, the required approval) — it just removes the "remember to click
+# merge after approval" step. Patch + minor non-security bumps are
+# auto-merged; majors stay manual.
+#
+# NOTE: GitHub does not let `GITHUB_TOKEN` approve PRs (actions can't
+# approve PRs from their own repo). The ruleset still requires one
+# approval — until a reviewer (or a separate approval bot with a PAT)
+# approves the PR, auto-merge waits.
+
+on: pull_request_target
+
+permissions:
+  pull-requests: write
+  contents: write
+
+jobs:
+  automerge:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dependabot/fetch-metadata@v2
+        id: meta
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Enable auto-merge for non-major bumps
+        if: steps.meta.outputs.update-type != 'version-update:semver-major'
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
