@@ -152,24 +152,38 @@ export function buildScheduler(
         `refuse: cron started — osv every ${config.REFUSE_OSV_FREQUENCY}m, deps.dev every ${config.REFUSE_DEPS_DEV_FREQUENCY}m, enrichment "${config.REFUSE_ENRICHMENT_CRON}"`,
       );
 
-      // First-boot bootstrap: if the vulnerabilities table is empty, kick all
-      // three jobs in parallel so the server has data within minutes instead
-      // of waiting up to 24h for the enrichment cron tick. Each runs under its
-      // own concurrency guard so the cron tick that fires later just no-ops.
+      // First-boot bootstrap: kick each job whose source has never completed
+      // a successful run. Decoupling per-source means an upgrade from an
+      // older image — where OSV ran but the enrichment cron hasn't fired yet
+      // — still backfills KEV/EPSS/GHSA/Wolfi instead of waiting up to 24h.
+      // Each job runs under its own concurrency guard so the regular cron
+      // tick that fires later just no-ops.
       if (config.REFUSE_BOOTSTRAP_ON_EMPTY) {
-        const row = rawDb
+        const done = readSourcesDone(rawDb);
+        const vulnRow = rawDb
           .prepare(`SELECT COUNT(*) AS n FROM vulnerabilities`)
           .get() as { n: number } | undefined;
-        if (!row || row.n === 0) {
-          console.log(
-            `refuse: empty vulnerabilities table — kicking initial pass on all sources in parallel ` +
-              `(osv across ${OSV_ROTATION_TOTAL} ecosystems @ 1/tick, kev, epss, ghsa, wolfi). ` +
-              `Watch /readyz for progress.`,
-          );
-          // Fire-and-forget; each job's logging lives inside makeJob.
+        const vulnsEmpty = !vulnRow || vulnRow.n === 0;
+        const enrichmentSources = ["kev", "epss", "ghsa_direct", "wolfi"] as const;
+        const missingEnrichment = enrichmentSources.filter((s) => !done.has(s));
+
+        const kicks: string[] = [];
+        if (vulnsEmpty || !done.has("osv")) {
+          kicks.push("osv");
           osvJob().catch(() => {});
+        }
+        if (!done.has("deps_dev")) {
+          kicks.push("deps-dev");
           depsDevJob().catch(() => {});
+        }
+        if (missingEnrichment.length > 0) {
+          kicks.push(`enrichment(${missingEnrichment.join(",")})`);
           enrichJob().catch(() => {});
+        }
+        if (kicks.length > 0) {
+          console.log(
+            `refuse: bootstrap — kicking ${kicks.join(" + ")} in parallel. Watch /readyz for progress.`,
+          );
         }
       }
     },

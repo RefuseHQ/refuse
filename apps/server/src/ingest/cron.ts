@@ -229,18 +229,24 @@ export async function runOsvDelta(db: D1LikeDatabase, cards: CardReader): Promis
       );
     }
 
-    // If we exited on the time budget, leave next_index pointing back at this
-    // ecosystem so the next cron tick resumes from the same watermark.
-    const advance = stopped ? 0 : 1;
+    // Rotation policy:
+    //   stopped + processed > 0 → mid-work, stay here next tick to finish
+    //   stopped + processed == 0 → caught up (read the whole zip, rejected
+    //     every record on the watermark), advance to avoid an infinite stall
+    //     re-reading the same archive forever
+    //   not stopped → finished naturally, advance
+    const advance = stopped && processed > 0 ? 0 : 1;
     const nextCursor: OsvCursor = {
       next_index: (cursor.next_index + advance) % ROTATION.length,
       watermarks: { ...cursor.watermarks, [ecosystem]: newWatermark }};
     await recordIngestionState(db, "osv", "ok", processed, {
       lastModified: JSON.stringify(nextCursor)});
-    logIngest(
-      tag,
-      `✓ done — ${processed} records in ${fmtElapsed(startedAt)}${stopped ? " (budget hit, resumes next tick)" : ""}`,
-    );
+    const tail = !stopped
+      ? ""
+      : processed > 0
+        ? " (budget hit, resumes next tick)"
+        : " (caught up, advancing rotation)";
+    logIngest(tag, `✓ done — ${processed} records in ${fmtElapsed(startedAt)}${tail}`);
   } catch (e) {
     // Try to flush whatever made it through before the failure so we don't
     // re-process those records on the next run.
