@@ -18,7 +18,7 @@
     "@refuse/shared": "workspace:*",
     "@refuse/versions": "workspace:*",
     "@yarnpkg/lockfile": "^1.1.0",
-    "better-sqlite3": "^11.7.0",
+    "better-sqlite3": "^12.10.0",
     "fast-xml-parser": "^5.0.0",
     "fflate": "^0.8.2",
     "hono": "^4.12.25",
