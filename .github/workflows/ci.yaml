@@ -41,7 +41,10 @@ jobs:
   build:
     name: build & test
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    # Always run on push to main — otherwise an infra-only commit that
+    # skips the gate hides a real regression in main's lockfile / source,
+    # and the next PR that touches package.json gets blamed for it.
+    if: github.event_name == 'push' || needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -66,7 +69,7 @@ jobs:
   docker:
     name: docker build (no push)
     needs: changes
-    if: needs.changes.outputs.docker == 'true'
+    if: github.event_name == 'push' || needs.changes.outputs.docker == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
