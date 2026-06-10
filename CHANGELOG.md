@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.3] — 2026-06-10
+
+### Fixed
+- OSV rotation no longer gets stuck on the first ecosystem when its watermark is current. Previously, every 5-minute tick spent the 60s budget reading the ~200 MB npm zip rejecting every record on the watermark, and the rotation cursor never advanced — PyPI / Maven / distros effectively starved. Now: if the budget expires with zero records processed (i.e. caught up), the cursor advances anyway.
+- First-boot bootstrap is now per-source. An upgrade from an older image — where the volume has OSV data but the enrichment cron never fired — now kicks the enrichment job immediately instead of waiting up to 24 h for the next daily tick. Each ingestion source (`osv`, `deps_dev`, `kev`, `epss`, `ghsa_direct`, `wolfi`) is checked individually via `ingestion_state.last_ok_at`.
+
 ## [0.1.2] — 2026-06-10
 
 UX-only release: visible progress in `docker logs`.
@@ -57,7 +63,8 @@ actually exists.
 - Embedded admin UI at `/ui/`.
 - Optional bearer-token API auth.
 
-[Unreleased]: https://github.com/RefuseHQ/refuse/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/RefuseHQ/refuse/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/RefuseHQ/refuse/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/RefuseHQ/refuse/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/RefuseHQ/refuse/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/RefuseHQ/refuse/releases/tag/v0.1.0
