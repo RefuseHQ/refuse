@@ -21,7 +21,7 @@ import { LANGUAGE_ECOSYSTEMS, CI_ECOSYSTEMS } from "@refuse/shared";
 import type { Config } from "../config";
 import type { CardReader } from "../cards";
 import type { D1LikeDatabase } from "../db/adapter";
-import { runOsvDelta, runDepsDevRefresh, runDailyEnrichment } from "./cron";
+import { runOsvDelta, runOsvBootstrap, runDepsDevRefresh, runDailyEnrichment } from "./cron";
 
 interface JobDeps {
   db: D1LikeDatabase;
@@ -113,7 +113,10 @@ export function buildScheduler(
   config: Config,
   deps: JobDeps,
 ): Scheduler {
-  const osvJob = makeJob("osv-delta", () => runOsvDelta(deps.db, deps.cards));
+  const osvJob = makeJob("osv-delta", () =>
+    runOsvDelta(deps.db, deps.cards, { concurrency: config.REFUSE_OSV_CONCURRENCY }),
+  );
+  const osvBulkJob = makeJob("osv-bulk", () => runOsvBootstrap(deps.db, deps.cards));
   const depsDevJob = makeJob("deps-dev", () => runDepsDevRefresh(deps.db, deps.cards));
   const enrichJob = makeJob("enrichment", () =>
     runDailyEnrichment(deps.db, deps.cards, deps.githubToken !== undefined ? { GITHUB_TOKEN: deps.githubToken } : {}),
@@ -160,17 +163,16 @@ export function buildScheduler(
       // tick that fires later just no-ops.
       if (config.REFUSE_BOOTSTRAP_ON_EMPTY) {
         const done = readSourcesDone(rawDb);
-        const vulnRow = rawDb
-          .prepare(`SELECT COUNT(*) AS n FROM vulnerabilities`)
-          .get() as { n: number } | undefined;
-        const vulnsEmpty = !vulnRow || vulnRow.n === 0;
         const enrichmentSources = ["kev", "epss", "ghsa_direct", "wolfi"] as const;
         const missingEnrichment = enrichmentSources.filter((s) => !done.has(s));
 
         const kicks: string[] = [];
-        if (vulnsEmpty || !done.has("osv")) {
-          kicks.push("osv");
-          osvJob().catch(() => {});
+        if (!done.has("osv")) {
+          // First boot: use the bulk all.zip — pulls every ecosystem in
+          // one streaming download. ~200 MB compressed, ~2-3 min total —
+          // ~50× faster than walking the 26-ecosystem rotation at 1/tick.
+          kicks.push("osv:bulk (all ecosystems in one pass)");
+          osvBulkJob().catch(() => {});
         }
         if (!done.has("deps_dev")) {
           kicks.push("deps-dev");

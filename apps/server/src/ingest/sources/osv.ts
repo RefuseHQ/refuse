@@ -28,6 +28,13 @@ export interface OsvFetcher {
   openEcosystemArchive(ecosystem: string): Promise<ReadableStream<Uint8Array> | null>;
   /** Fetch the full bulk archive — only call from the local backfill script. */
   fetchAllArchive(): Promise<Uint8Array>;
+  /**
+   * Streaming version of the bulk archive — pair with `streamZipRecords` so
+   * we don't materialize the ~600 MB uncompressed payload in memory. Safe to
+   * use from any host that isn't memory-constrained (i.e. anything other
+   * than the Workers runtime).
+   */
+  openAllArchive(): Promise<ReadableStream<Uint8Array>>;
 }
 
 export interface OsvFetcherDeps {
@@ -84,6 +91,16 @@ export function createOsvFetcher(deps: OsvFetcherDeps = {}): OsvFetcher {
         throw new Error(`OSV GCS fetch failed for all.zip: ${res.status}`);
       }
       return new Uint8Array(await res.arrayBuffer());
+    },
+
+    async openAllArchive() {
+      const res = await f(`${OSV_GCS_BASE}/all.zip`);
+      if (!res.ok || !res.body) {
+        throw new Error(
+          `OSV GCS fetch failed for all.zip: ${res.status}${res.body ? "" : " (no body)"}`,
+        );
+      }
+      return res.body;
     }};
 }
 

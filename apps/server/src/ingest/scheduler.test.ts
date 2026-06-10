@@ -19,6 +19,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     REFUSE_ENRICHMENT_CRON: "0 5 * * *",
     REFUSE_DISABLE_INGEST: true, // tests never want real cron tasks running
     REFUSE_BOOTSTRAP_ON_EMPTY: false,
+    REFUSE_OSV_CONCURRENCY: 4,
     REFUSE_CARD_CACHE_SIZE: 1000,
     REFUSE_CARD_CACHE_TTL_SECONDS: 60,
     ...overrides,
