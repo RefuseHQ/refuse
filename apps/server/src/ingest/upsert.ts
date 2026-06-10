@@ -156,7 +156,7 @@ export async function upsertRecords(
 
 export async function recordIngestionState(
   db: D1LikeDatabase,
-  source: "osv" | "deps_dev" | "ghsa_direct" | "enrichment",
+  source: "osv" | "deps_dev" | "ghsa_direct" | "enrichment" | "kev" | "epss" | "wolfi",
   status: "ok" | "error",
   recordsProcessed: number,
   options: { lastModified?: string; error?: string } = {},

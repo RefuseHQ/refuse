@@ -9,13 +9,15 @@
  * overlap with the next. Errors are caught and logged; the scheduler never
  * crashes the process.
  *
- * Optionally, on first boot with an empty DB, kicks one synchronous OSV pass
+ * Optionally, on first boot with an empty DB, kicks all three jobs in parallel
  * so `docker run` becomes useful within minutes instead of waiting for the
- * first cron tick.
+ * first cron tick. Emits a per-source progress banner and exposes a readiness
+ * snapshot the HTTP /readyz route polls.
  */
 
 import cron, { type ScheduledTask } from "node-cron";
 import type Database from "better-sqlite3";
+import { LANGUAGE_ECOSYSTEMS, CI_ECOSYSTEMS } from "@refuse/shared";
 import type { Config } from "../config";
 import type { CardReader } from "../cards";
 import type { D1LikeDatabase } from "../db/adapter";
@@ -49,11 +51,61 @@ function makeJob(name: string, fn: JobFn): JobFn {
   };
 }
 
+/**
+ * Sources that gate "ready". OSV alone covers most package ecosystems, but the
+ * KEV / EPSS enrichment is what gates "this is a real exploitation signal"
+ * from the API responses — without them the /api/v1/check responses are
+ * structurally complete but missing actively-exploited and likelihood scoring.
+ * deps.dev is metadata-only (version freshness) so it isn't required for
+ * readiness, but we surface its state in the snapshot.
+ */
+const REQUIRED_SOURCES = ["osv", "kev", "epss", "ghsa_direct", "wolfi"] as const;
+const OSV_ROTATION_TOTAL = LANGUAGE_ECOSYSTEMS.length + CI_ECOSYSTEMS.length + 17; // DISTRO_ROTATION
+
+export interface ReadinessSnapshot {
+  ready: boolean;
+  /** Sources that have completed at least one successful run. */
+  ready_sources: string[];
+  /** Sources that haven't completed yet. */
+  pending_sources: string[];
+  /** OSV per-ecosystem progress: how many of the 28 archives have been processed at least once. */
+  osv_ecosystems_done: number;
+  osv_ecosystems_total: number;
+}
+
 export interface Scheduler {
   start(): void;
   stop(): void;
   /** Manually trigger a job (used by admin endpoints). */
   trigger(job: "osv" | "deps-dev" | "enrichment"): Promise<void>;
+  /** Snapshot of which sources have completed an initial pass. */
+  getReadiness(): ReadinessSnapshot;
+}
+
+function readSourcesDone(rawDb: Database.Database): Set<string> {
+  const done = new Set<string>();
+  try {
+    const rows = rawDb
+      .prepare(`SELECT source, last_ok_at FROM ingestion_state WHERE last_ok_at IS NOT NULL`)
+      .all() as { source: string; last_ok_at: string | null }[];
+    for (const r of rows) done.add(r.source);
+  } catch {
+    // ingestion_state may not exist yet during startup — treat as empty.
+  }
+  return done;
+}
+
+function readOsvEcosystemsDone(rawDb: Database.Database): number {
+  try {
+    const row = rawDb
+      .prepare(`SELECT last_modified FROM ingestion_state WHERE source = 'osv'`)
+      .get() as { last_modified: string | null } | undefined;
+    if (!row?.last_modified) return 0;
+    const parsed = JSON.parse(row.last_modified) as { watermarks?: Record<string, string> };
+    return Object.keys(parsed.watermarks ?? {}).length;
+  } catch {
+    return 0;
+  }
 }
 
 export function buildScheduler(
@@ -68,6 +120,22 @@ export function buildScheduler(
   );
 
   const tasks: ScheduledTask[] = [];
+
+  function readinessSnapshot(): ReadinessSnapshot {
+    const done = readSourcesDone(rawDb);
+    const ready_sources: string[] = [];
+    const pending_sources: string[] = [];
+    for (const s of REQUIRED_SOURCES) {
+      (done.has(s) ? ready_sources : pending_sources).push(s);
+    }
+    return {
+      ready: pending_sources.length === 0,
+      ready_sources,
+      pending_sources,
+      osv_ecosystems_done: readOsvEcosystemsDone(rawDb),
+      osv_ecosystems_total: OSV_ROTATION_TOTAL,
+    };
+  }
 
   return {
     start(): void {
@@ -84,17 +152,24 @@ export function buildScheduler(
         `refuse: cron started — osv every ${config.REFUSE_OSV_FREQUENCY}m, deps.dev every ${config.REFUSE_DEPS_DEV_FREQUENCY}m, enrichment "${config.REFUSE_ENRICHMENT_CRON}"`,
       );
 
-      // First-boot bootstrap: if the vulnerabilities table is empty, kick a
-      // synchronous OSV pass so the server has something to serve within
-      // minutes instead of waiting up to REFUSE_OSV_FREQUENCY for the first
-      // tick.
+      // First-boot bootstrap: if the vulnerabilities table is empty, kick all
+      // three jobs in parallel so the server has data within minutes instead
+      // of waiting up to 24h for the enrichment cron tick. Each runs under its
+      // own concurrency guard so the cron tick that fires later just no-ops.
       if (config.REFUSE_BOOTSTRAP_ON_EMPTY) {
         const row = rawDb
           .prepare(`SELECT COUNT(*) AS n FROM vulnerabilities`)
           .get() as { n: number } | undefined;
         if (!row || row.n === 0) {
-          console.log("refuse: empty vulnerabilities table — kicking initial OSV pass");
-          osvJob().catch(() => {}); // fire-and-forget; logged inside makeJob
+          console.log(
+            `refuse: empty vulnerabilities table — kicking initial pass on all sources in parallel ` +
+              `(osv across ${OSV_ROTATION_TOTAL} ecosystems @ 1/tick, kev, epss, ghsa, wolfi). ` +
+              `Watch /readyz for progress.`,
+          );
+          // Fire-and-forget; each job's logging lives inside makeJob.
+          osvJob().catch(() => {});
+          depsDevJob().catch(() => {});
+          enrichJob().catch(() => {});
         }
       }
     },
@@ -107,5 +182,6 @@ export function buildScheduler(
       if (job === "deps-dev") return depsDevJob();
       return enrichJob();
     },
+    getReadiness: readinessSnapshot,
   };
 }

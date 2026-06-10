@@ -30,7 +30,8 @@ export function buildApp(deps: AppDeps): Hono {
 
   app.use("/api/v1/*", cors({ origin: deps.config.REFUSE_CORS_ORIGIN, allowMethods: ["POST", "OPTIONS"], allowHeaders: ["Authorization", "Content-Type"] }));
 
-  // Liveness — always open.
+  // Liveness — always open. Returns 200 as long as the DB handle works,
+  // independent of whether ingestion has finished its initial pass.
   app.get("/healthz", (c) => {
     try {
       const row = deps.db.prepare(`SELECT 1 as ok`).get() as { ok: number } | undefined;
@@ -39,6 +40,15 @@ export function buildApp(deps: AppDeps): Hono {
       return c.json({ status: "down", detail: (e as Error).message }, 503);
     }
     return c.json({ status: "ok" });
+  });
+
+  // Readiness — returns 200 only after every required ingestion source has
+  // completed at least one successful pass. Returns 503 with the missing
+  // sources listed during the initial bootstrap. Suitable for Docker
+  // `--health-cmd`, k8s readiness probes, and "is the seed done?" UX.
+  app.get("/readyz", (c) => {
+    const snap = deps.scheduler.getReadiness();
+    return c.json(snap, snap.ready ? 200 : 503);
   });
 
   // Authed surface: /mcp + /api/v1/check/*. Open by default; bearer required
