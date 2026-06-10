@@ -101,8 +101,8 @@ importers:
         specifier: workspace:*
         version: link:../shared
       '@renovatebot/pep440':
-        specifier: ^4.2.2
-        version: 4.2.4
+        specifier: ^5.0.0
+        version: 5.0.0
       dpkg-compare-versions:
         specifier: ^1.0.3
         version: 1.0.3
@@ -487,9 +487,9 @@ packages:
   '@oxc-project/types@0.133.0':
     resolution: {integrity: sha512-KzkdCd6Uxqnf6l3HOw1xfatAlUURA0g14cvBYFyJ5SaNOQbOUvBr9PKArcPcrNIeRsBdgcUzOGrhKveVpvOIGA==}
 
-  '@renovatebot/pep440@4.2.4':
-    resolution: {integrity: sha512-r+Pwj9ud/5QOOHoSsD7mWzU0Qkj105UPOyPwihGAtbNCl9pqnWkEDNRM5an63QvsFsS9tt+X3o+npT3AKBiTVg==}
-    engines: {node: ^20.9.0 || ^22.11.0 || ^24, pnpm: '>=10.0.0'}
+  '@renovatebot/pep440@5.0.0':
+    resolution: {integrity: sha512-91cFM32/pnOAvC7W1W1kPPI9QM2y6OrYCeomz7pop4A+3Ksh2XnZXGznUMlzR7YbOQlg7X/MNlF27s9Yt9hhTA==}
+    engines: {node: ^22.11.0 || >=24.10.0, pnpm: '>=10.0.0'}
 
   '@rolldown/binding-android-arm64@1.0.3':
     resolution: {integrity: sha512-454rs7jHngixp/NMxd5srYD57OnzSlZ/eFTETjORQHLwJG1lRtmNOJcBerZlfu4GjKqeq8aCCIQrMdHyhI51Hw==}
@@ -1964,7 +1964,7 @@ snapshots:
 
   '@oxc-project/types@0.133.0': {}
 
-  '@renovatebot/pep440@4.2.4': {}
+  '@renovatebot/pep440@5.0.0': {}
 
   '@rolldown/binding-android-arm64@1.0.3':
     optional: true

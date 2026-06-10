@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@refuse/shared": "workspace:*",
-    "@renovatebot/pep440": "^4.2.2",
+    "@renovatebot/pep440": "^5.0.0",
     "dpkg-compare-versions": "^1.0.3",
     "semver": "^7.8.4"
   },
