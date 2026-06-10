@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-06-10
+
+First-boot UX + faster release builds. No API breakage.
+
+### Added
+- `GET /readyz` — returns 200 once every required ingestion source (osv, kev, epss, ghsa_direct, wolfi) has completed at least one successful pass; 503 with the pending list during bootstrap. Suitable for `docker --health-cmd` and k8s readinessProbe.
+- Per-source readiness snapshot via `scheduler.getReadiness()` (also exposed in the response body of `/readyz`).
+- KEV / EPSS / Wolfi now record `ingestion_state` rows so the admin `/api/admin/sources` panel shows their last-run status, matching the existing OSV + GHSA behavior.
+
+### Changed
+- First-boot bootstrap now kicks all three jobs (osv, deps-dev, enrichment) in parallel instead of only osv. KEV / EPSS / GHSA / Wolfi load in the first minute of uptime instead of waiting for the daily 5am UTC enrichment cron.
+- `better-sqlite3` 11 → 12. Ships a prebuilt binary for Node 24 (ABI v137) on both `linux-x64` and `linux-arm64`, so the runtime image no longer needs python3/make/g++ to source-compile sqlite3 on first install. Multi-arch release builds drop from ~15 min to ~2 min.
+
+### Removed
+- `docker/Dockerfile` no longer installs build tools (python3, make, g++) in either stage — the prebuilt better-sqlite3 binary makes them unnecessary.
+
 ## [0.1.0] — 2026-06-10
 
 First tagged release. The codebase has been usable for a while; this is the
@@ -31,5 +47,6 @@ actually exists.
 - Embedded admin UI at `/ui/`.
 - Optional bearer-token API auth.
 
-[Unreleased]: https://github.com/RefuseHQ/refuse/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/RefuseHQ/refuse/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/RefuseHQ/refuse/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/RefuseHQ/refuse/releases/tag/v0.1.0
