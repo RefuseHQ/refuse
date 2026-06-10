@@ -353,12 +353,6 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the deeper walkthrough.
 
 ---
 
-## Status
-
-Alpha. The REST + ingestion + CLI integration is feature-complete and verified end-to-end. The `/mcp` MCP-transport endpoint is currently a stub returning 501 — it will be wired up post-v0.1.0 for users who want a self-hosted MCP target. See [ROADMAP.md](./ROADMAP.md) and the [open issues](https://github.com/RefuseHQ/refuse/issues).
-
----
-
 ## Contributing
 
 Issues, fixes, and new ecosystem matchers are welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md). Before opening a PR:
