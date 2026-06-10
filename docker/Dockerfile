@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1.7
 #
 # Multi-stage build:
-#   1. build  — install pnpm deps, native-compile better-sqlite3, compile TS
+#   1. build  — install pnpm deps (better-sqlite3 ships a Node-24 prebuilt
+#               binary, no native compile needed), compile TS
 #   2. runtime — slim Node, only what's needed at runtime
 #
 # Goal: image < 250 MB unpacked, cold start < 1s with a populated DB.
@@ -12,7 +13,7 @@ FROM node:24-bookworm-slim AS build
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      python3 make g++ ca-certificates \
+      ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 RUN corepack enable
@@ -47,15 +48,8 @@ COPY --from=build /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml
 COPY --from=build /app/apps/server/package.json apps/server/package.json
 COPY --from=build /app/packages/shared/package.json packages/shared/package.json
 COPY --from=build /app/packages/versions/package.json packages/versions/package.json
-# better-sqlite3 prebuild-install may fall back to source compile when no
-# prebuilt binary matches the current Node ABI. Pull in build tools just
-# long enough to install prod deps, then purge them in the same layer so
-# the final runtime image stays slim.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      python3 make g++ \
-    && corepack enable && pnpm install --prod --frozen-lockfile \
-    && apt-get purge -y --auto-remove python3 make g++ \
-    && rm -rf /var/lib/apt/lists/* /root/.cache /root/.local
+RUN corepack enable && pnpm install --prod --frozen-lockfile \
+    && rm -rf /root/.cache /root/.local
 
 COPY --from=build /app/apps/server/dist            apps/server/dist
 COPY --from=build /app/apps/server/src/migrations  apps/server/dist/migrations

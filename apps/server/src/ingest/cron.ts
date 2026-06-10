@@ -326,16 +326,24 @@ export async function runDailyEnrichment(
 
   try {
     const r = await refreshKev(db);
+    await recordIngestionState(db, "kev", "ok", r.upserted);
     console.log(`KEV: fetched=${r.fetched} upserted=${r.upserted}`);
   } catch (e) {
-    errors.push(`KEV: ${(e as Error).message}`);
+    const msg = (e as Error).message;
+    errors.push(`KEV: ${msg}`);
+    await recordIngestionState(db, "kev", "error", 0, { error: msg }).catch(() => {});
   }
 
   try {
     const r = await refreshEpss(db);
+    await recordIngestionState(db, "epss", "ok", r.upserted, {
+      ...(r.scored_date ? { lastModified: r.scored_date } : {}),
+    });
     console.log(`EPSS: fetched=${r.fetched} upserted=${r.upserted} date=${r.scored_date}`);
   } catch (e) {
-    errors.push(`EPSS: ${(e as Error).message}`);
+    const msg = (e as Error).message;
+    errors.push(`EPSS: ${msg}`);
+    await recordIngestionState(db, "epss", "error", 0, { error: msg }).catch(() => {});
   }
 
   try {
@@ -373,9 +381,12 @@ export async function runDailyEnrichment(
       await publishCards(db, cards, result.affected_pairs_changed, {
         concurrency: 16});
     }
+    await recordIngestionState(db, "wolfi", "ok", records.length);
     console.log(`Wolfi: packages=${stats.packages} records=${stats.records}`);
   } catch (e) {
-    errors.push(`Wolfi: ${(e as Error).message}`);
+    const msg = (e as Error).message;
+    errors.push(`Wolfi: ${msg}`);
+    await recordIngestionState(db, "wolfi", "error", 0, { error: msg }).catch(() => {});
   }
 
   await recordIngestionState(
