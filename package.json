@@ -27,5 +27,8 @@
     "onlyBuiltDependencies": [
       "better-sqlite3"
     ]
+  },
+  "devDependencies": {
+    "vite": "^8.0.16"
   }
 }
