@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.4] — 2026-06-10
+
+Cold-seed time drops from ~2h to ~3 min.
+
+### Added
+- `runOsvBootstrap` — on first boot, stream OSV's bulk `all.zip` (~200 MB compressed, every ecosystem) and seed all per-ecosystem watermarks in one pass.
+- `REFUSE_OSV_CONCURRENCY` env var (default 4) — caps the number of ecosystems fetched in parallel each delta tick.
+- `OsvFetcher.openAllArchive()` — streaming counterpart to `fetchAllArchive`.
+
+### Changed
+- `runOsvDelta` no longer round-robins one ecosystem per tick under a 60 s wall-clock cap. It now processes every ecosystem in parallel each tick with the configured concurrency. The 60 s budget was a Workers CPU-cap workaround that doesn't apply to a self-hosted Node runtime; on a populated DB, per-ecosystem deltas are tiny so each tick still completes in seconds.
+- First-boot bootstrap now calls the new `osv:bulk` job (not the per-tick rotation) when OSV has never recorded a successful run, so Maven (Log4Shell), crates.io, Go, RubyGems etc. are populated within the first few minutes instead of after a 2-hour rotation.
+
 ## [0.1.3] — 2026-06-10
 
 ### Fixed
@@ -63,7 +76,8 @@ actually exists.
 - Embedded admin UI at `/ui/`.
 - Optional bearer-token API auth.
 
-[Unreleased]: https://github.com/RefuseHQ/refuse/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/RefuseHQ/refuse/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/RefuseHQ/refuse/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/RefuseHQ/refuse/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/RefuseHQ/refuse/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/RefuseHQ/refuse/compare/v0.1.0...v0.1.1
