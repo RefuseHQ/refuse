@@ -12,8 +12,9 @@ refuse is usable today, but the API may change between minor versions. Don't bet
 
 - [ ] **MCP endpoint** — wire up the Streamable HTTP MCP transport (currently stubbed at `/mcp`). Same six tools as the REST surface, but available over the MCP protocol for compatible clients.
 - [ ] **Test coverage thresholds** — fail CI if line coverage drops below 70%.
-- [ ] **Signed container image** — cosign-sign `ghcr.io/refusehq/refuse` and publish provenance.
-- [ ] **SBOM** — attach a CycloneDX SBOM to every release.
+- [x] **Signed container image** — cosign-sign `ghcr.io/refusehq/refuse` and publish provenance.
+- [x] **SBOM** — attach a CycloneDX SBOM to every release.
+- [ ] Document `cosign verify` + `slsa-verifier verify-image` in SECURITY.md (paired with the SECURITY change in this PR).
 - [ ] **`refuse-mode: warn`** — a new threshold tier that logs but doesn't block, for soft-rollouts.
 - [ ] **Better admin UI** — searchable card lookups, ingest run history, key management.
 
