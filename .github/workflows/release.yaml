@@ -6,7 +6,7 @@ on:
       - "v*"
 
 permissions:
-  contents: read
+  contents: write       # GitHub Release creation
   packages: write       # GHCR push
   id-token: write       # OIDC keyless cosign signing
   attestations: write   # SLSA build provenance for the image
@@ -62,3 +62,34 @@ jobs:
           subject-name: ghcr.io/refusehq/refuse
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
+
+      # Extract the matching section from CHANGELOG.md so the GitHub Release
+      # body matches the changelog without copy-paste drift. awk reads from the
+      # first `## [<version>]` heading through (but not including) the next
+      # `## [` heading. Falls back to a stub line if the version isn't in the
+      # CHANGELOG (e.g. emergency hotfix tagged before the changelog promotion).
+      - name: Extract release notes from CHANGELOG.md
+        id: notes
+        run: |
+          set -euo pipefail
+          v="${{ steps.meta.outputs.version }}"
+          awk -v v="$v" '
+            $0 ~ "^## \\["v"\\]" { capture=1; next }
+            capture && /^## \[/ { exit }
+            capture { print }
+          ' CHANGELOG.md > /tmp/release-notes.md
+          if ! [ -s /tmp/release-notes.md ]; then
+            echo "No CHANGELOG.md section for v$v — emitting a stub" >&2
+            printf 'Released v%s. See [CHANGELOG.md](./CHANGELOG.md).\n' "$v" \
+              > /tmp/release-notes.md
+          fi
+          echo "path=/tmp/release-notes.md" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.meta.outputs.version }}
+          name: v${{ steps.meta.outputs.version }}
+          body_path: ${{ steps.notes.outputs.path }}
+          draft: false
+          prerelease: false
