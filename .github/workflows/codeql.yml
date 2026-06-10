@@ -13,7 +13,11 @@ on:
       - '**/*.cjs'
       - 'package.json'
       - 'pnpm-lock.yaml'
-      - '.github/workflows/codeql.yml'
+      # Workflow files affect what runs in CI and the supply-chain surface
+      # we expose, so scan them too. Also satisfies the branch ruleset's
+      # `code_scanning` requirement on PRs that only touch workflows.
+      - '.github/workflows/**.yml'
+      - '.github/workflows/**.yaml'
   schedule:
     - cron: "37 5 * * 1"
 
