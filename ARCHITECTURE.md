@@ -33,16 +33,14 @@ flowchart LR
     DB --> CACHE --> API
     DB --> UI
 
-    CLI[refuse-cli shim] --> API
-    CI[CI runner] --> API
-    AGENT[Coding agent] --> API
+    CLI[refuse-cli] --> API
 ```
 
 A single Node process:
 
 1. **Ingests** vulnerability + metadata feeds on a cron schedule.
 2. **Stores** the normalized result in local SQLite (a "card" per `(ecosystem, name, version)` keyed lookup).
-3. **Answers** REST queries from `refuse-cli`, CI runners, or any client that wants to vet a package install before it happens.
+3. **Answers** REST queries from `refuse-cli` or any HTTP client that wants to vet a package install before it happens.
 
 No queues, no Redis, no Postgres, no external state. The only thing on disk is `data/refuse.db`.
 
@@ -54,73 +52,83 @@ apps/server/
     index.ts            # boot: config → db → router → scheduler → listen
     config.ts           # Zod-validated env vars
     http/
-      router.ts         # all routes
+      router.ts         # all routes (/healthz, /readyz, /api/*, /mcp, /ui)
+      rest.ts           # /api/v1/check/* handlers
+      admin.ts          # /api/admin/* + /api/keys/* handlers
       auth.ts           # bearer-token middleware
-      cors.ts
     ingest/
-      osv.ts            # OSV.dev GCS pulls
-      deps-dev.ts       # deps.dev REST
-      kev.ts            # CISA KEV
-      epss.ts           # FIRST EPSS
-      ghsa.ts           # GitHub Security Advisories
-      wolfi.ts          # Wolfi distro packages
+      scheduler.ts      # node-cron scheduler + bootstrap-on-empty
+      cron.ts           # the three job entry points (osv-delta, osv-bulk, deps-dev, enrichment) + progress logging
+      normalize.ts      # OSV → internal record shape
+      upsert.ts         # ingestion_state writes + card affected-key tracking
+      publish-cards.ts  # card-cache invalidation after upsert
+      recompute-cards.ts
+      recompute-severity.ts
+      cvss.ts
+      sources/
+        osv.ts          # OSV.dev per-ecosystem and bulk archive streaming
+        deps-dev.ts     # deps.dev REST
+        kev.ts          # CISA KEV
+        epss.ts         # FIRST EPSS streaming CSV
+        ghsa-direct.ts  # GitHub Security Advisories via GraphQL
+        wolfi.ts        # Wolfi distro packages
     parsers/
-      lockfile/         # one file per format
-      dockerfile/       # base-image + RUN apt-get parsing
+      lockfile/         # one file per format (npm, pnpm, yarn, bun, pip, …)
+      dockerfile/       # base-image + RUN apt-get/pip parsing
       workflow/         # GitHub Actions YAML
     db/
-      schema.sql        # current schema
-      migrations/       # ordered SQL files
-      queries.ts        # named queries, all hand-rolled
-      d1-adapter.ts     # makes better-sqlite3 look like Cloudflare D1
-    cards.ts            # LRU on top of DB lookups
+      client.ts         # better-sqlite3 setup (WAL, pragmas)
+      migrate.ts        # ordered SQL migration runner
+      adapter.ts        # query layer facade used by ingest + http
+    migrations/         # ordered SQL files (append-only)
+    cards/              # LRU on top of SQLite card lookups
+    tools/              # the six check_* tools (package, batch, lockfile, dockerfile, workflow, suggest-safe-version)
+    keys/               # API-key CRUD helpers
     ui/static/          # vanilla HTML + JS admin dashboard
+    mcp/                # placeholder for the upcoming MCP transport
 packages/
   shared/               # Zod schemas, ecosystem enum, DB row types
   versions/             # per-ecosystem semver-equivalent comparators
 docker/                 # multi-stage Dockerfile + compose
 docs/                   # user-facing
-scripts/audit.sh        # CI gate: rejects vendor-locked deps
+scripts/audit.sh        # CI gate: rejects vendor-locked deps in source
 ```
 
 ## Data model
 
-Each row in the `cards` table is a denormalized, query-ready answer for one `(ecosystem, name, version)` lookup. We build cards from raw upstream data in `cards.ts` so that the hot read path is a single indexed SELECT.
+Each row in the `cards` table is a denormalized, query-ready answer for one `(ecosystem, name, version)` lookup. We build cards from raw upstream data in `cards/` so that the hot read path is a single indexed SELECT.
 
 Other tables:
 
-- `osv_advisories` — raw OSV records, keyed by ID.
-- `package_versions` — `(ecosystem, name)` → list of known versions from deps.dev.
+- `vulnerabilities` — normalized records, keyed by `refuse_id` with `aliases` (CVE / GHSA / OSV ID).
+- `affected_packages`, `package_versions` — derived from `affected[]` entries.
 - `kev` — CISA's "known exploited" list.
-- `epss` — FIRST exploit-prediction scores.
-- `wolfi_packages` — for Dockerfile scanning of Wolfi-based images.
-- `ingestion_state` — last-run timestamp + last-ok for each source.
+- `epss` — FIRST exploit-prediction scores (probability + percentile).
+- `ingestion_state` — last-run timestamp + `last_ok_at` per source. Drives `/readyz` and the admin `/sources` panel.
 - `api_keys` — optional bearer tokens (with CRUD via admin API).
 
-Schema lives in `apps/server/src/db/schema.sql`. Migrations are append-only ordered files in `apps/server/src/db/migrations/`.
-
-## The D1 adapter
-
-The query layer is written against a D1-shape API (`prepare().bind().all()`). A thin adapter in `db/d1-adapter.ts` makes `better-sqlite3` look like that binding, so the same code can run on a server or on a Cloudflare Workers/D1 deployment without forking.
-
-When you add a query, target the D1-shape API.
+Schema is split across the ordered files in `apps/server/src/migrations/`. New schema changes are new migration files; never edit old ones.
 
 ## Ingest pipeline
 
-`ingest/*.ts` adapters are scheduled by `node-cron`. The three jobs:
+The scheduler in `ingest/scheduler.ts` registers three top-level node-cron jobs, each guarded by an in-process concurrency lock so a tick that takes longer than the cron interval skips the next firing rather than stacking.
 
-- Every ~5 min: OSV delta pull (one ecosystem per tick, round-robin).
-- Every ~15 min: deps.dev refresh (paginated).
-- Daily at 05:00 UTC: enrichment — KEV, EPSS, GHSA, Wolfi.
+| Job | Frequency | What it does |
+|---|---|---|
+| `osv-delta` | every `REFUSE_OSV_FREQUENCY` min (default 5) | All 26 ecosystems in parallel, capped by `REFUSE_OSV_CONCURRENCY` (default 4). Each ecosystem applies the per-ecosystem watermark; after the first bootstrap each tick is seconds-fast. |
+| `deps-dev` | every `REFUSE_DEPS_DEV_FREQUENCY` min (default 15) | Refreshes `package_versions` rows: latest stable + license per package, paginated cursor in `ingestion_state.last_modified`. |
+| `enrichment` | `REFUSE_ENRICHMENT_CRON` (default daily 05:00 UTC) | KEV → EPSS → GHSA-direct → Wolfi, sequentially, each wrapped in its own try/catch so a single failure doesn't block the next source. |
 
-Each adapter is responsible for:
+On boot with an empty `vulnerabilities` table the scheduler kicks an extra one-shot `osv-bulk` job — a streaming download of OSV's bulk `all.zip` (~280K records, every ecosystem in one pass). That's the ~3 min cold seed; subsequent restarts on the same `/data` volume skip it. The scheduler also kicks `deps-dev` and `enrichment` whose `ingestion_state.last_ok_at` is still NULL, so an upgrade from a snapshot that was OSV-only doesn't have to wait for the daily enrichment cron.
+
+Each source adapter is responsible for:
 
 1. Pulling from upstream.
 2. Validating with the Zod schema in `packages/shared/src/schema.ts`.
 3. Upserting into the relevant table.
-4. Marking its row in `ingestion_state`.
+4. Marking its row in `ingestion_state` (success or error).
 
-Adapters are pure-ish: they take a `Db` + a `Fetch` and return a count. This makes them testable without mocking HTTP.
+Adapters are pure-ish: they take a DB facade + a `fetch` and return a count. This makes them testable without mocking HTTP.
 
 ## Hot path: a `/api/v1/check/package` request
 
@@ -147,18 +155,22 @@ Lockfile parsers, the Dockerfile parser, and the GitHub Actions parser are **pur
 This is intentional. It means:
 
 - They're trivially testable (paste a real lockfile into `*.test.ts`).
-- They can run in CI, in a Docker build stage, in a browser, in a Worker.
+- They can run in CI, in a Docker build stage, or in a browser.
 - New ecosystems can be added by anyone without touching the server.
+
+## Readiness signal
+
+`GET /readyz` returns the per-source bootstrap state — 503 with `pending_sources: ["kev","epss",...]` while sources are still doing their first run, 200 once each required source has a `last_ok_at`. The bootstrap on an empty DB kicks `osv-bulk` + `deps-dev` + `enrichment` in parallel; on persistent-volume restarts it short-circuits and returns 200 immediately. Suitable for Docker `--health-cmd` (via `node -e`) and Kubernetes readinessProbe.
 
 ## What lives where
 
 | Concern | Lives in |
 | --- | --- |
-| Adding a new vulnerability source | `apps/server/src/ingest/<source>.ts` |
+| Adding a new vulnerability source | `apps/server/src/ingest/sources/<source>.ts` + a `recordIngestionState(...)` call |
 | Adding a new package manager | `packages/versions/src/<eco>.ts` + `packages/shared/src/ecosystems.ts` + `apps/server/src/parsers/lockfile/<eco>.ts` |
-| Tweaking the HTTP API | `apps/server/src/http/router.ts` |
-| Changing the DB schema | New file in `apps/server/src/db/migrations/` (never edit old ones) |
-| Auth / API keys | `apps/server/src/http/auth.ts` + `apps/server/src/db/queries.ts` |
+| Tweaking the HTTP API | `apps/server/src/http/router.ts` + `apps/server/src/http/rest.ts` |
+| Changing the DB schema | New file in `apps/server/src/migrations/` (never edit old ones) |
+| Auth / API keys | `apps/server/src/http/auth.ts` + `apps/server/src/keys/` |
 | Admin dashboard | `apps/server/src/ui/static/` |
 
 ## Non-goals
