@@ -64,7 +64,7 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for a deeper walkthrough.
 ## Coding conventions
 
 - **TypeScript strict.** `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes` are on. Don't reach for `any`; ask for review if a type is fighting you.
-- **No ORM.** SQLite queries are written by hand against the `better-sqlite3` API. A thin D1-shape adapter keeps the query layer portable to Cloudflare D1 should anyone want to deploy it there.
+- **No ORM.** SQLite queries are written by hand against the `better-sqlite3` API, behind a thin facade in `apps/server/src/db/adapter.ts` so call sites stay terse.
 - **Parsers are pure.** Lockfile/Dockerfile/workflow parsers take a string and return a `ParseResult` — no I/O, no logging. This keeps them trivially testable.
 - **Tests live next to code.** `foo.ts` ↔ `foo.test.ts`. Vitest, `*.test.ts` files are picked up automatically.
 - **Errors must be actionable.** A 500 with `internal error` helps no one — surface the failing source, the package, and what was attempted.
