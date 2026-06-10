@@ -79,7 +79,7 @@ RUN npm ci
 COPY . .
 ```
 
-For the "scan the Dockerfile itself before the build" pattern, run `refuse check-dockerfile Dockerfile` from a preceding CI step — it parses both the base image's distro packages and any `RUN pip install` / `RUN apt-get install` lines.
+For the "scan the Dockerfile itself before the build" pattern, run `refuse audit` from a preceding CI step (it walks the repo and discovers every Dockerfile / lockfile / workflow), or hit the `check_dockerfile` tool directly via `POST /api/v1/check/dockerfile` with the file contents — it parses both the base image's distro packages and any `RUN pip install` / `RUN apt-get install` lines.
 
 ---
 

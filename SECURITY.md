@@ -47,3 +47,24 @@ refuse is pre-1.0. We currently support security fixes only on the **latest tagg
 Once a fix is shipped, we publish a [GitHub Security Advisory](https://github.com/RefuseHQ/refuse/security/advisories) with a CVE where appropriate. Reporters are credited unless they ask to be anonymous.
 
 Thank you for helping keep refuse, and the people who run it, safe.
+
+## Verifying releases
+
+Container images and release artifacts are signed with [cosign](https://github.com/sigstore/cosign) using GitHub OIDC (keyless) and published with [SLSA](https://slsa.dev) provenance.
+
+To verify the container image:
+
+```bash
+cosign verify ghcr.io/refusehq/refuse:latest \
+  --certificate-identity-regexp 'https://github.com/RefuseHQ/refuse/.github/workflows/release.yaml.*' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+To verify SLSA provenance with [slsa-verifier](https://github.com/slsa-framework/slsa-verifier):
+
+```bash
+slsa-verifier verify-image ghcr.io/refusehq/refuse:latest \
+  --source-uri github.com/RefuseHQ/refuse
+```
+
+If verification fails, do not use the image. Open a security advisory.
