@@ -35,12 +35,6 @@ For the latest, see the [GitHub project board](https://github.com/orgs/RefuseHQ/
 - [ ] **GitHub App** — surface refuse decisions as PR checks without needing the CLI in CI.
 - [ ] **LTS branch** — once 1.0 ships, we'll backport security fixes for a defined window.
 
-## Out of scope (probably forever)
-
-- Scanning running containers or live deployments. That's runtime security, a different problem.
-- A general policy engine. Severity threshold + fail mode is the surface area; we'd rather stay opinionated.
-- Vendor-specific integrations baked into the OSS server. Those belong in third-party adapters or downstream forks.
-
 ## How to influence this
 
 - Open a [Discussion](https://github.com/RefuseHQ/refuse/discussions) with the use case.
