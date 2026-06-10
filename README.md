@@ -2,7 +2,7 @@
 
 # refuse
 
-**Self-hostable backend that blocks vulnerable package installs — on laptops, in CI, and during Docker builds.**
+**Self-hostable backend that powers [`refuse-cli`](https://github.com/RefuseHQ/refuse-cli) to block vulnerable package installs.**
 
 [![CI](https://github.com/RefuseHQ/refuse/actions/workflows/ci.yaml/badge.svg)](https://github.com/RefuseHQ/refuse/actions/workflows/ci.yaml)
 [![CodeQL](https://github.com/RefuseHQ/refuse/actions/workflows/codeql.yml/badge.svg)](https://github.com/RefuseHQ/refuse/actions/workflows/codeql.yml)
@@ -25,61 +25,13 @@ The intended caller is [`refuse-cli`](https://github.com/RefuseHQ/refuse-cli) �
 
 ## Where it runs
 
-### 1. On a developer's laptop — block local `npm install`
+`refuse` is a long-running HTTP service. Run it once, somewhere reachable from the developers and CI jobs that need to gate installs:
 
-```sh
-# bring the server up once
-docker compose up -d
+- **On a developer's laptop** as a local-only backend (anonymous mode, bound to `localhost:8080`).
+- **On a small VM or container host** as a team-shared backend behind your reverse proxy, API-key locked down.
+- **On the hosted edition** at [refuse.dev](https://refuse.dev) — same image, same API, no operations.
 
-# point refuse-cli at it
-refuse config set server_url http://localhost:8080
-refuse install                  # drops PATH shims into ~/.refuse/bin
-
-# from now on, every install goes through the local server
-npm install lodash@4.17.10
-# → refuse: blocked — CVE-2019-10744 (high); suggested 4.17.21
-```
-
-### 2. In a GitHub Actions runner — fail PRs that bring in a vulnerable dependency
-
-```yaml
-jobs:
-  install:
-    runs-on: ubuntu-latest
-    services:
-      refuse:
-        image: ghcr.io/refusehq/refuse:latest
-        ports: ["8080:8080"]
-        options: --health-cmd "node -e \"fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1))\""
-    steps:
-      - uses: actions/checkout@v4
-      - uses: RefuseHQ/refuse-cli@v0   # installs the refuse binary on the runner
-      - run: refuse config set server_url http://refuse:8080
-      - name: Vet the lockfile before install
-        run: refuse check-lockfile package-lock.json   # exits 2 on a vulnerable hit
-      - run: npm ci
-```
-
-### 3. In a Docker image build — keep CVEs out of the image
-
-```dockerfile
-FROM node:20-bookworm-slim AS build
-
-# Pull a refuse-cli binary into the build stage.
-COPY --from=ghcr.io/refusehq/refuse-cli:latest /usr/local/bin/refuse /usr/local/bin/refuse
-
-WORKDIR /app
-COPY package.json package-lock.json ./
-
-# Fail the build before any package is installed.
-ARG REFUSE_SERVER_URL=https://refuse.your-domain.com
-RUN refuse check-lockfile package-lock.json
-
-RUN npm ci
-COPY . .
-```
-
-For the "scan the Dockerfile itself before the build" pattern, run `refuse audit` from a preceding CI step (it walks the repo and discovers every Dockerfile / lockfile / workflow), or hit the `check_dockerfile` tool directly via `POST /api/v1/check/dockerfile` with the file contents — it parses both the base image's distro packages and any `RUN pip install` / `RUN apt-get install` lines.
+The CLI side of the integration — putting refuse in front of every `npm install`, in pre-commit hooks, in GitHub Actions, or in Docker builds — lives in [`refuse-cli`](https://github.com/RefuseHQ/refuse-cli). The CLI installs as a single binary on the runner/laptop/build stage and talks to whichever refuse backend you pick.
 
 ---
 
@@ -100,58 +52,69 @@ For the "scan the Dockerfile itself before the build" pattern, run `refuse audit
 
 ---
 
-## How it fits
-
-```mermaid
-flowchart LR
-    LAPTOP[laptop<br/>refuse-cli shim] --> SRV
-    CI[CI runner<br/>service container] --> SRV
-    DOCKER[docker build stage] --> SRV
-    AGENT[Coding agent] --> SRV
-
-    subgraph refuse-server
-      SRV[Hono HTTP<br/>/api/v1/check/*]
-      DB[(SQLite<br/>WAL)]
-      CRON[node-cron<br/>scheduler]
-      SRV <--> DB
-      CRON --> DB
-    end
-
-    OSV[OSV.dev] --> CRON
-    DD[deps.dev] --> CRON
-    KEV[KEV / EPSS / GHSA / Wolfi] --> CRON
-```
-
-`refuse-cli` is the recommended caller because it handles PATH shimming, install-verb parsing, and the gate flow. Any HTTP client works too — see [`docs/api.md`](docs/api.md).
-
-For a full walkthrough of the internals, see [ARCHITECTURE.md](./ARCHITECTURE.md).
-
----
-
 ## Quickstart
 
+### 1. Start the server with a persistent volume
+
 ```sh
-docker run --rm -p 8080:8080 -v "$PWD/data:/data" ghcr.io/refusehq/refuse:latest
+docker run -d --name refuse -p 8080:8080 \
+  -v refuse-data:/data \
+  ghcr.io/refusehq/refuse:latest
 ```
 
-First boot pulls an OSV snapshot (~2–3 minutes). After that, queries run from local SQLite:
+The named volume keeps the ingested vulnerability DB across restarts. Without it, every container restart re-downloads ~280K records.
+
+### 2. Watch the cold-seed (~3 minutes)
 
 ```sh
-curl -s -X POST http://localhost:8080/api/v1/check/package \
+docker logs -f refuse
+```
+
+The first boot streams OSV's bulk archive (every ecosystem in one pass — npm, PyPI, Maven, Go, crates.io, RubyGems, … plus every Debian / Ubuntu / Alpine / RHEL distro the OSV team publishes), plus KEV, EPSS, GHSA, and Wolfi in parallel. The bars show what's happening:
+
+```
+refuse: ingest[osv:bulk         ] [██████████░░░░░░░░░░]  50% • 75000 records • 1m30s
+refuse: ingest[kev              ] [████████████████████] 100% • 1542/1542 entries
+refuse: ingest[epss             ] [████████████████████]  87% • 245678 rows scored
+refuse: ingest[ghsa             ] ✓ done — 100 records in 2s (cursor saved)
+refuse: ingest[wolfi            ] ✓ done — 1247 records across 412 packages in 4s
+```
+
+After this one-time bootstrap, deltas every 5 minutes are seconds-fast.
+
+### 3. Wait for `/readyz`
+
+```sh
+curl http://localhost:8080/readyz
+```
+
+Returns `503` with a `pending_sources` list while sources are bootstrapping, and `200` once every required source has completed at least one pass:
+
+```json
+{
+  "ready": true,
+  "ready_sources": ["osv", "kev", "epss", "ghsa_direct", "wolfi"],
+  "pending_sources": [],
+  "osv_ecosystems_done": 26,
+  "osv_ecosystems_total": 26
+}
+```
+
+### 4. Point [`refuse-cli`](https://github.com/RefuseHQ/refuse-cli) at it
+
+```sh
+refuse config set server_url http://localhost:8080
+refuse install                   # drop PATH shims into ~/.refuse/bin
+npm install lodash@4.17.10
+# refuse: blocked — CVE-2019-10744 (critical); suggested 4.17.21
+```
+
+Direct REST calls work too — useful for any client that doesn't want the shim:
+
+```sh
+curl -sX POST http://localhost:8080/api/v1/check/package \
   -H 'Content-Type: application/json' \
   -d '{"ecosystem":"npm","name":"lodash","version":"4.17.10"}' | jq .
-
-# {
-#   "vulnerable": true,
-#   "package": "lodash",
-#   "version": "4.17.10",
-#   "vulnerabilities": [
-#     { "cve": "CVE-2019-10744", "severity_label": "high", … }
-#   ],
-#   "suggested_fixes": [
-#     { "version": "4.17.21", "type": "minimum_safe", "breaking_change": false }
-#   ]
-# }
 ```
 
 Or browse to <http://localhost:8080/ui/> for the dashboard.
@@ -245,8 +208,7 @@ Both share parsers, version comparators, and the OSV-derived data model.
 | OSS license | Apache-2.0 | Apache-2.0 | Apache-2.0 | Apache-2.0 | Apache-2.0 | MIT |
 | Standalone server | ✅ | — | partial | ✅ | — | — |
 | **Install-time gate via PATH shim** (with [`refuse-cli`](https://github.com/RefuseHQ/refuse-cli)) | ✅ | — | — | — | — | ✅ |
-| **Runs in CI as a service container** | ✅ | ✅ | ✅ | partial (SBOM upload) | ✅ | — |
-| **Scans Dockerfiles during build** | ✅ | — | ✅ (different mechanism) | — | — | — |
+| **Dockerfile parsing (base image + RUN)** | ✅ | — | ✅ (different mechanism) | — | — | — |
 | OSV data | ✅ | ✅ | ✅ | ✅ | — | — |
 | KEV / EPSS enrichment | ✅ | — | partial | ✅ | — | — |
 | GitHub Actions `uses:` scanning | ✅ | — | partial | — | — | — |
@@ -275,24 +237,6 @@ refuse install
 ```
 
 Anonymous mode is fine here — the server only binds to `localhost`.
-
-### Team CI runner (service container)
-
-In your workflow:
-
-```yaml
-services:
-  refuse:
-    image: ghcr.io/refusehq/refuse:latest
-    env:
-      REFUSE_REQUIRE_KEY: "true"
-      REFUSE_ADMIN_TOKEN: ${{ secrets.REFUSE_ADMIN_TOKEN }}
-    ports: ["8080:8080"]
-```
-
-Create one shared API key via `POST /api/keys` once (out of band), store as a repo secret `REFUSE_API_KEY`, and pass it to every step: `REFUSE_API_KEY: ${{ secrets.REFUSE_API_KEY }}`.
-
-The first run after each container boot will need to fetch a fresh OSV snapshot. For long-lived runners, mount a cache volume; for ephemeral runners, set `REFUSE_BOOTSTRAP_ON_EMPTY=false` and ship a pre-seeded `refuse.db` via the runner cache.
 
 ### Fleet (real domain, persistent volume)
 
@@ -369,7 +313,7 @@ Security policy: [SECURITY.md](./SECURITY.md). Report privately via [hello@refus
 
 ## Acknowledgments
 
-Built on top of [OSV.dev](https://osv.dev/), [deps.dev](https://deps.dev/), the [CISA KEV catalog](https://www.cisa.gov/known-exploited-vulnerabilities-catalog), [FIRST EPSS](https://www.first.org/epss/), [GitHub Security Advisories](https://github.com/advisories), and the [Wolfi advisories](https://github.com/wolfi-dev/advisories). All free, all maintained by people doing the real work — refuse is mostly plumbing on top of theirs.
+Built on top of [OSV.dev](https://osv.dev/), [deps.dev](https://deps.dev/), the [CISA KEV catalog](https://www.cisa.gov/known-exploited-vulnerabilities-catalog), [FIRST EPSS](https://www.first.org/epss/), [GitHub Security Advisories](https://github.com/advisories), and the [Wolfi advisories](https://github.com/wolfi-dev/advisories).
 
 ## License
 
