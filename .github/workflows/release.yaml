@@ -57,7 +57,7 @@ jobs:
             ghcr.io/refusehq/refuse:latest
 
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-name: ghcr.io/refusehq/refuse
           subject-digest: ${{ steps.build.outputs.digest }}
