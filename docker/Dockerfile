@@ -7,7 +7,7 @@
 # Goal: image < 250 MB unpacked, cold start < 1s with a populated DB.
 
 # ─── 1. build ──────────────────────────────────────────────────────────────
-FROM node:20-bookworm-slim AS build
+FROM node:24-bookworm-slim AS build
 
 WORKDIR /app
 
@@ -32,7 +32,7 @@ COPY packages        packages
 RUN pnpm --filter @refuse-oss/server build
 
 # ─── 2. runtime ────────────────────────────────────────────────────────────
-FROM node:20-bookworm-slim AS runtime
+FROM node:24-bookworm-slim AS runtime
 
 WORKDIR /app
 
