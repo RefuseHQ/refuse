@@ -6,14 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.0] — 2026-06-10
+
+First tagged release. The codebase has been usable for a while; this is the
+first version where the container image at `ghcr.io/refusehq/refuse:latest`
+actually exists.
+
 ### Added
 - Community + governance docs: `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `CODEOWNERS`, issue + PR templates, `.editorconfig`, `ARCHITECTURE.md`, `ROADMAP.md`.
 - Dependabot and CodeQL workflows.
+- Cosign keyless signing + SLSA build provenance on every published image.
 
 ### Changed
 - README polish: hero, badges, architecture diagram, cross-link to `refuse-cli`.
 
-## [0.0.1] — initial
+## [0.0.1] — initial codebase (untagged, never published)
 
 - HTTP server (Hono) with `/api/v1/check/*` endpoints.
 - SQLite-backed card store with in-process scheduler (node-cron).
@@ -24,5 +31,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Embedded admin UI at `/ui/`.
 - Optional bearer-token API auth.
 
-[Unreleased]: https://github.com/RefuseHQ/refuse/compare/v0.0.1...HEAD
-[0.0.1]: https://github.com/RefuseHQ/refuse/releases/tag/v0.0.1
+[Unreleased]: https://github.com/RefuseHQ/refuse/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/RefuseHQ/refuse/releases/tag/v0.1.0
