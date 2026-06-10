@@ -25,30 +25,24 @@ The intended caller is [`refuse-cli`](https://github.com/RefuseHQ/refuse-cli) �
 
 ## Where it runs
 
-`refuse` is a long-running HTTP service. Run it once, somewhere reachable from the developers and CI jobs that need to gate installs:
+A long-running HTTP service — pick one host:
 
-- **On a developer's laptop** as a local-only backend (anonymous mode, bound to `localhost:8080`).
-- **On a small VM or container host** as a team-shared backend behind your reverse proxy, API-key locked down.
-- **On the hosted edition** at [refuse.dev](https://refuse.dev) — same image, same API, no operations.
+- **Laptop** — `docker run`, bound to localhost. Anonymous mode is fine.
+- **Team VM** — same image behind your reverse proxy, API-key locked down.
+- **Hosted** — [refuse.dev](https://refuse.dev) runs the same image for you.
 
-The CLI side of the integration — putting refuse in front of every `npm install`, in pre-commit hooks, in GitHub Actions, or in Docker builds — lives in [`refuse-cli`](https://github.com/RefuseHQ/refuse-cli). The CLI installs as a single binary on the runner/laptop/build stage and talks to whichever refuse backend you pick.
+CLI-side integrations (PATH shim, pre-commit, GitHub Actions, Docker builds) live in [`refuse-cli`](https://github.com/RefuseHQ/refuse-cli).
 
 ---
 
 ## What it does
 
-- **REST API** at `/api/v1/check/*` — `package`, `batch`, `lockfile`, `dockerfile`, `workflow`, `suggest-safe-version`. JSON in, JSON out, bearer auth optional.
-- **Six tools** wired to the API: single-package check, batch parallel scan, full lockfile, Dockerfile (base image + RUN lines), GitHub Actions `uses:` entries, minimum-safe-upgrade suggestion.
-- **In-process ingestion via `node-cron`.** Three jobs:
-  - OSV delta every ~5 min (round-robin across ecosystems, configurable)
-  - deps.dev refresh every ~15 min (latest stable + license per package)
-  - Daily enrichment at 05:00 UTC — CISA KEV, EPSS, GHSA direct, Wolfi
-- **Embedded SQLite** (better-sqlite3, WAL mode). One file, mounted from the host.
-- **Optional API-key auth** — anonymous by default; flip a single env var to require bearer tokens.
-- **Built-in admin UI** at `/ui/` — vanilla HTML/JS, no build step, ~30 KB. Source health, ingest triggers, key management.
-- **Reads only from public sources.** No external service dependency at runtime.
+- **REST API** — `POST /api/v1/check/{package, batch, lockfile, dockerfile, workflow}` and `suggest-safe-version`. JSON in/out, optional bearer auth.
+- **Ingestion** runs in-process: OSV every ~5 min, deps.dev every ~15 min, daily KEV / EPSS / GHSA / Wolfi enrichment. All sources public, no runtime calls outside them.
+- **Embedded SQLite** (WAL mode), one container, one volume.
+- **Admin UI** at `/ui/` for source health, manual ingest triggers, and API-key CRUD.
 
-> An `/mcp` endpoint for MCP-aware clients (Claude Code, Cursor, Codex, Antigravity) is on the [roadmap](./ROADMAP.md). The REST surface is the canonical interface today.
+> An `/mcp` endpoint for MCP-aware clients is on the [roadmap](./ROADMAP.md). REST is the canonical interface today.
 
 ---
 
@@ -61,8 +55,6 @@ docker run -d --name refuse -p 8080:8080 \
   -v refuse-data:/data \
   ghcr.io/refusehq/refuse:latest
 ```
-
-The named volume keeps the ingested vulnerability DB across restarts. Without it, every container restart re-downloads ~280K records.
 
 ### 2. Watch the cold-seed (~3 minutes)
 
@@ -140,7 +132,7 @@ services:
       retries: 3
 ```
 
-See [`docker/docker-compose.with-key.yml`](docker/docker-compose.with-key.yml) for the same with comments. Released images are [cosign-signed](https://github.com/sigstore/cosign) and ship with SLSA build provenance — see [SECURITY.md](./SECURITY.md) for verification.
+See [`docker/docker-compose.with-key.yml`](docker/docker-compose.with-key.yml) for the same with comments.
 
 ---
 
