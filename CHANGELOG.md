@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-06-10
+
+UX-only release: visible progress in `docker logs`.
+
+### Added
+- Per-source ingestion progress lines with a 20-char ASCII bar in `docker logs`. Streaming sources (OSV per-ecosystem, EPSS) fill the bar against a calibrated per-ecosystem estimate; known-total sources (KEV, GHSA page, Wolfi, deps.dev batch) show real percentages. Fixed-width tag column so the bars align.
+
+### Changed
+- Per-source log lines now share a consistent `refuse: ingest[name] ▶/✓/✗ …` prefix instead of ad-hoc `KEV: fetched=… upserted=…` strings. Greppable and easier to read in `docker logs -f`.
+
 ## [0.1.1] — 2026-06-10
 
 First-boot UX + faster release builds. No API breakage.
@@ -47,6 +57,7 @@ actually exists.
 - Embedded admin UI at `/ui/`.
 - Optional bearer-token API auth.
 
-[Unreleased]: https://github.com/RefuseHQ/refuse/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/RefuseHQ/refuse/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/RefuseHQ/refuse/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/RefuseHQ/refuse/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/RefuseHQ/refuse/releases/tag/v0.1.0
