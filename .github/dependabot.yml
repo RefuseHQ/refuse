@@ -8,12 +8,18 @@ updates:
     open-pull-requests-limit: 10
     labels: ["dependencies"]
     groups:
+      # Groups bundle ONLY patch + minor — majors get individual PRs.
+      # A grouped major-bump PR ends up with multiple breaking changes
+      # rolled into one diff that's hard to review or revert.
       types:
         patterns: ["@types/*"]
+        update-types: ["minor", "patch"]
       dev-dependencies:
         dependency-type: "development"
+        update-types: ["minor", "patch"]
       production-dependencies:
         dependency-type: "production"
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
