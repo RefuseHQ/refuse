@@ -34,3 +34,10 @@ updates:
       interval: "weekly"
       day: "monday"
     labels: ["dependencies", "docker"]
+    ignore:
+      # Node odd-major releases are the Current line, not LTS. We pin to
+      # LTS only (24 → 26 → 28 …); odd majors also drop corepack from the
+      # slim image and break our build. Ignore them explicitly so
+      # Dependabot doesn't keep proposing 25, 27, 29 every release.
+      - dependency-name: "node"
+        versions: ["25.x", "27.x", "29.x", "31.x", "33.x"]
