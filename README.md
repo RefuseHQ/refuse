@@ -8,7 +8,7 @@
 [![CodeQL](https://github.com/RefuseHQ/refuse/actions/workflows/codeql.yml/badge.svg)](https://github.com/RefuseHQ/refuse/actions/workflows/codeql.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Container](https://img.shields.io/badge/ghcr.io%2Frefusehq%2Frefuse-latest-1f6feb?logo=docker)](https://github.com/RefuseHQ/refuse/pkgs/container/refuse)
-[![Release](https://img.shields.io/github/v/release/RefuseHQ/refuse?display_name=tag&sort=semver)](https://github.com/RefuseHQ/refuse/releases)
+[![Release](https://img.shields.io/github/v/release/RefuseHQ/refuse?display_name=tag&sort=semver&cacheSeconds=3600)](https://github.com/RefuseHQ/refuse/releases)
 
 </div>
 
