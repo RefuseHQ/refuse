@@ -19,7 +19,7 @@
     "@refuse/versions": "workspace:*",
     "@yarnpkg/lockfile": "^1.1.0",
     "better-sqlite3": "^12.10.0",
-    "fast-xml-parser": "^5.0.0",
+    "fast-xml-parser": "^5.9.0",
     "fflate": "^0.8.2",
     "hono": "^4.12.25",
     "lru-cache": "^11.5.1",
